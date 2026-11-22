@@ -1,12 +1,16 @@
 This package constitutes an interactive R problem set based on the RTutor package (https://github.com/skranz/RTutor). 
 
-The problem set is based on the paper **"Taxing Billionaires: Estate Taxes and the Geographical Location of the Ultra-Wealthy"** by Moretti and Wilson (2023).
+The problem set is based on the paper **"Taxing Billionaires: Estate Taxes and the Geographical Location of the Ultra-Wealthy"** by Enrico Moretti and Daniel J. Wilson (2023).
 
 Link to the paper: https://doi.org/10.1257/pol.20200685
 
 In this problem set, we examine whether state-level estate taxes influence where the wealthiest Americans choose to live. Using data on the Forbes 400, we look at how the geographic distribution of billionaires has developed over time and estimate how strongly they respond to estate taxes. Building on these results, we evaluate whether introducing an estate tax pays off for a state, taking into account both the additional tax revenue and the losses from billionaires moving away.
 
-To work through this problem set, follow the steps below.
+You can also explore the interactive problem set directly in your browser without installing the R package. Please note that your progress cannot be saved in the online version.
+
+Online version: https://tassilogeiselhart.shinyapps.io/ErbschaftsteuerUSA/
+
+To install and work through the problem set locally, follow the steps below.
 
 ## 1. Installation
 
