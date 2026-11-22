@@ -1,0 +1,2869 @@
+## Exercise Overview -- {.hidden}
+
+# Erbschaftsteuern und die Wohnortwahl von Superreichen: Eine interaktive empirische Analyse
+
+<br>
+
+Autor: Tassilo Geiselhart
+
+Sprache: Deutsch, Code in Englisch
+
+<br>
+
+#< ignore
+
+```{r "setup"}
+library(RTutor)
+
+setwd("~/Uni/Bachelor Arbeit/Taxing Billionaires/RStudio")
+
+ps.name="ErbschaftsteuerUSA"; sol.file=paste0(ps.name,"_sol.Rmd")
+libs = c("ggplot2", "dplyr", "tidyr", "USAboundaries", "sf", "fixest", "modelsummary", "patchwork", "DiagrammeR") # Alle Pakete für das Problem Set
+create.ps(sol.file=sol.file, ps.name=ps.name, libs=libs, addons = "quiz")
+
+show.ps(ps.name,launch.browser=TRUE,
+  auto.save.code=FALSE,sample.solution=FALSE)
+
+```
+
+#>
+
+<!-- ==================================================================================================================== -->
+
+Herzlich willkommen zu diesem interaktiven RTutor Problem Set, das Teil meiner Bachelorarbeit an der Universität Ulm ist. Grundlage ist das Paper **"Taxing Billionaires: Estate Taxes and the Geographical Location of the Ultra-Wealthy"** von *Enrico Moretti* und *Daniel J. Wilson*, das im Mai 2023 im *American Economic Journal: Economic Policy* erschienen ist. Im Folgenden wird es kurz als Paper bezeichnet. Darin untersuchen die Autoren, ob und wie Erbschaftsteuern der US-Bundesstaaten die Wohnortwahl der reichsten Menschen in den USA beeinflussen.
+
+Das Paper, der ergänzende Anhang sowie die Replikationsdaten sind online verfügbar:
+
+-   **Paper**: <http://doi.org/10.1257/pol.20200685>
+-   **Anhang**: <https://www.aeaweb.org/articles/materials/18522>
+-   **Daten**: <https://doi.org/10.3886/E157481V1>
+
+Die in diesem Problem Set verwendeten Datensätze stammen aus den Originaldaten der Studie von Moretti und Wilson (2023) und wurden für eine übersichtlichere Darstellung und einfachere Bearbeitung entsprechend angepasst.
+
+Das interaktive Problem Set wurde auf **GitHub** und **shinyapps.io** veröffentlicht und ist unter folgenden Links verfügbar:
+
+-   **Github**: <https://github.com/tassilogeiselhart/RTutorErbschaftsteuerUSA>
+-   **Shinyapps.io**: <https://tassilogeiselhart.shinyapps.io/ErbschaftsteuerUSA/>
+
+<br>
+
+<!-- ==================================================================================================================== -->
+
+Die Besteuerung sehr vermögender Personen steht vor einer besonderen Herausforderung: Vermögen ist zwar eine attraktive Steuerbasis, gleichzeitig können besonders wohlhabende Personen ihren Wohnsitz vergleichsweise flexibel an steuerliche Unterschiede zwischen Regionen oder Ländern anpassen (vgl. Kleven et al., 2020; Moretti & Wilson, 2017). Empirische Evidenz aus skandinavischen Ländern zeigt, dass solche Wanderungsreaktionen tatsächlich relevant sind. Jakobsen et al. (2026) kommen zu dem Ergebnis, dass ein Anstieg des Spitzensteuersatzes auf Vermögen um einen Prozentpunkt den Bestand vermögender Steuerzahler um etwa zwei Prozent reduziert. Ähnliche Ergebnisse zeigen Brülhart et al. (2022) für die Schweiz, wo sich die Vermögenssteuern zwischen den Kantonen, also den einzelnen Gliedstaaten, unterscheiden und vermögende Personen teilweise mit Umzügen auf Steuerunterschiede reagieren. Allerdings zeigen nicht alle Studien gleich starke Wanderungsreaktionen. Young et al. (2016) finden für US-amerikanische Millionäre, dass steuerbedingte Umzüge zwar vorkommen, insgesamt aber eine vergleichsweise geringe Rolle spielen.
+
+Vor diesem Hintergrund stellt sich die Frage, ob auch Erbschaftsteuern die Wohnortwahl besonders vermögender Personen beeinflussen. Anhand der Forbes 400, also der 400 reichsten Amerikaner, können wir untersuchen, ob Erbschaftsteuern der US-Bundesstaaten dazu führen, dass diese Personen ihren Wohnsitz in einen Staat ohne eine solche Steuer verlegen. Da die Erbschaftsteuer erst beim Tod anfällt, ist dabei insbesondere das Alter von Bedeutung. Für ältere Milliardäre rückt die potenzielle Steuerbelastung zeitlich näher, wodurch der Anreiz zu einer strategischen Wohnortwahl steigen kann.
+
+Die USA bieten dafür ein besonders geeignetes Umfeld, da sich die Erbschaftsteuern stark zwischen den Bundesstaaten unterscheiden. Zudem veränderte eine Bundessteuerreform im Jahr 2001 das System der Besteuerung grundlegend. Diese Veränderung lässt sich als natürliches Experiment nutzen, um den Effekt von Erbschaftsteuern auf die Wohnortwahl zu untersuchen.
+
+In diesem Problem Set behandeln wir verschiedene empirische Methoden und Analysen, darunter:
+
+-   Deskriptive Statistiken zur geografischen Verteilung
+-   Difference-in-Differences-Schätzung
+-   Instrumentalvariablenansatz
+-   Kosten-Nutzen-Analyse
+
+<!-- ==================================================================================================================== -->
+
+### **Gliederung**
+
+1.  Erbschaftsteuern und Standorte der Forbes 400
+
+-   1.1 Estate Tax nach Bundesstaat
+-   1.2 Forbes 400 nach Bundesstaat
+-   1.3 Anteil der Forbes-400-Personen in Estate-Tax-Staaten
+
+2.  Auswirkungen des Todes von Milliardären
+
+3.  Auswirkungen der Erbschaftsteuer auf den Standort der Forbes 400
+
+-   3.1 Differenz-in-Differenz-Schätzungen
+-   3.2 Instrumentalvariablen-Ansatz
+-   3.3 Umzugswahrscheinlichkeit zwischen Staaten mit und ohne Erbschaftsteuer
+
+4.  Kosten und Nutzen einer Erbschaftsteuer
+
+-   4.1 Der fiskalische Trade-off
+-   4.2 Das Grundmodell
+-   4.3 Verallgemeinerung nach Altersgruppen
+-   4.4 Das Entscheidungskriterium
+
+5.  Schätzungen der Kosten und Nutzen einer Erbschaftsteuer
+
+6.  Fazit und steuerpolitische Implikationen
+
+7.  Quellenangaben
+
+8.  Anhang
+
+<!-- ==================================================================================================================== -->
+
+<br>
+
+Alle Aufgaben können grundsätzlich unabhängig voneinander bearbeitet werden. Es wird jedoch empfohlen, die Übungen in der vorgegebenen Reihenfolge durchzuarbeiten.
+
+Das Problem Set besteht aus theoretischen Erläuterungen, Code-Chunks, Info-Boxen und Quizfragen. Um eine Aufgabe zu lösen, gibst du deinen Code direkt in die vorgesehenen Code-Felder ein. Mit einem Klick auf `check` erhältst du sofortiges Feedback, ob deine Lösung korrekt ist. Zu Beginn jeder neuen Übung musst du zunächst auf `edit` klicken, um das Code-Feld freizuschalten. Falls du einmal nicht weiterkommst, gibt dir `hint` einen gezielten Tipp. Eine Musterlösung kannst du jederzeit über `solution` aufrufen.
+
+Die Info-Boxen liefern dir wirtschaftstheoretisches Hintergrundwissen sowie Erklärungen zu den verwendeten Befehlen und ökonometrischen Methoden. Die Quizfragen helfen dir dabei, das Gelernte zu festigen und dein Verständnis zu überprüfen. Für erfolgreich gelöste Aufgaben und Quizfragen warten außerdem Auszeichnungen auf dich.
+
+Viel Spaß beim Lösen der Aufgaben und beim Sammeln von Auszeichnungen!
+
+<!-- ==================================================================================================================== -->
+
+## Exercise 1. -- Erbschaftsteuern und Standorte der Forbes 400
+
+### Estate Tax
+
+Eine Estate Tax ist eine Steuer auf das Vermögen, das eine Person beim Tod hinterlässt. Sie kann daher als eine Form der Vermögensbesteuerung verstanden werden, die nicht während des Lebens, sondern am Ende des Lebens anfällt. Für sehr reiche Personen kann diese Steuer besonders relevant sein, da ihr Vermögen häufig aus Unternehmensanteilen, Aktien, Immobilien oder anderen Vermögenswerten besteht (vgl. Moretti & Wilson, 2023b).
+
+Von der Estate Tax ist die Inheritance Tax zu unterscheiden, die nicht beim gesamten Nachlass, sondern bei der Erbschaft des einzelnen Erben ansetzt. Eine Übersicht über beide Steuerarten in den einzelnen Bundesstaaten bietet die [**Tax Foundation**](https://taxfoundation.org/data/all/state/estate-inheritance-taxes/). Moretti und Wilson (2023b) konzentrieren sich in ihrer Analyse auf bundesstaatliche Estate Taxes. Im Folgenden beziehen wir uns daher auf die **Estate Tax**, die wir vereinfachend auch als **Erbschaftsteuer** bezeichnen.
+
+Für die Besteuerung in den USA ist nicht entscheidend, in welchem Staat eine Person stirbt, sondern welcher Bundesstaat als steuerlicher Hauptwohnsitz gilt. Dieser sogenannte "domicile state" bestimmt, welcher Bundesstaat Anspruch auf die Estate Tax hat. Dadurch kann die Wahl des Wohnsitzes insbesondere für sehr vermögende Personen steuerlich relevant sein (vgl. Bakija & Slemrod, 2004; Moretti & Wilson, 2023b). 
+
+### Forbes 400
+
+Um diese Zusammenhänge empirisch untersuchen zu können, benötigt man Informationen darüber, in welchen Bundesstaaten sehr vermögende Personen leben und wie sich diese Standorte über die Zeit verändern. Dafür eignen sich die [Forbes 400](https://www.forbes.com/forbes-400/) besonders gut. Dabei handelt es sich um eine jährlich vom Wirtschaftsmagazin "Forbes" veröffentlichte Liste der 400 reichsten Amerikanerinnen und Amerikaner, die unter anderem Angaben zu Name, geschätztem Vermögen, Alter, Vermögensquelle und Wohnort enthält (vgl. Forbes, o. J.; Moretti & Wilson, 2023b).
+
+In diesem Kapitel untersuchen wir, wie sich die geografische Verteilung der Estate Taxes und der Forbes-400-Personen über die Zeit verändert hat. Dabei steht besonders die Steuerreform im Jahr 2001 im Mittelpunkt, da sie die steuerlichen Anreize zwischen den Bundesstaaten deutlich verändert hat.
+
+
+### "Economic Growth and Tax Relief Reconciliation Act" von 2001
+
+Der zentrale institutionelle Einschnitt ist die Steuerreform von 2001, der [**Economic Growth and Tax Relief Reconciliation Act (EGTRRA)**](https://www.congress.gov/bill/107th-congress/house-bill/1836/text) (U.S. Congress, 2001). Diese Reform veränderte die Bedeutung staatlicher Erbschaftsteuern grundlegend.
+
+#### Vor 2001 mit Bundesgutschrift:
+
+Vor dieser Reform gab es zwar Unterschiede zwischen den Bundesstaaten, aber für sehr große Vermögen wurden staatliche Erbschaftsteuern vollständig durch eine Bundesgutschrift ausgeglichen. Staatliche Erbschaftsteuern konnten bis zu einem Satz von 16 Prozent des Nachlasswerts auf die Bundessteuer angerechnet werden. Da die Bundesstaaten in der Spitze ebenfalls höchstens 16 Prozent erhoben, änderte sich nur die Aufteilung zwischen Bund und Bundesstaat, nicht die Gesamtbelastung (vgl. Bakija & Slemrod, 2004; Moretti & Wilson, 2023b). Die gesamte Erbschaftsteuerbelastung der Ultra-Reichen war vor 2001 also unabhängig vom Wohnsitzstaat.
+
+**Beispiel**: Ein Nachlass von 1 Mrd. Dollar wird vereinfacht mit 50 Prozent Erbschaftsteuer belastet, also mit 500 Mio. Dollar. 
+In einem Staat ohne eigene Estate Tax gehen die gesamten 500 Mio. Dollar an den Bund. In einem Staat mit Estate Tax gehen 16 Prozent des Nachlasses, also 160 Mio. Dollar, an den Bundesstaat. Dieser Betrag wird von der Bundessteuer abgezogen:
+
+$$
+\text{Nachlass von 1 Mrd. Dollar, Staat mit Estate Tax vor 2001:}
+$$
+$$
+\begin{gathered}
+340 \text{ Mio. Dollar Bundessteuer} + 160 \text{ Mio. Dollar Bundesstaatsteuer} = 500 \text{ Mio. Dollar Gesamtsteuer} \\
+\scriptsize{\text{(Eigenes, vereinfachtes Rechenbeispiel)}}
+\end{gathered}
+$$
+
+In beiden Staaten beträgt die Gesamtbelastung also 500 Mio. Dollar.
+
+#### Nach 2001 ohne Bundesgutschrift:
+
+Mit dem EGTRRA wurde die Bundesgutschrift zwischen 2002 und 2004 schrittweise abgeschafft und entfiel ab 2005 vollständig (vgl. Moretti & Wilson, 2023b; U.S. Congress, 2001). Seitdem fällt die staatliche Erbschaftsteuer zusätzlich zur Bundessteuer an. 
+Im selben Beispiel werden in einem Staat ohne Estate Tax weiterhin 500 Mio. Dollar fällig. In einem Staat mit Estate Tax ergibt sich dagegen folgende Steuerbelastung:
+
+$$
+\text{Nachlass von 1 Mrd. Dollar, Staat mit Estate Tax nach 2001:}
+$$
+$$
+\begin{gathered}
+500 \text{ Mio. Dollar Bundessteuer} + 160 \text{ Mio. Dollar Bundesstaatsteuer} = 660 \text{ Mio. Dollar Gesamtsteuer} \\
+\scriptsize{\text{(Eigenes, vereinfachtes Rechenbeispiel)}}
+\end{gathered}
+$$
+
+Der Wohnsitz entscheidet nun über eine Mehrbelastung von 160 Mio. Dollar. Für sehr vermögende Personen wurde es dadurch plötzlich deutlich wichtiger, ob ihr Wohnsitzstaat eine eigene Erbschaftsteuer erhebt.
+
+#< info "Was im Rechenbeispiel vereinfacht ist"
+Den Bundessteuersatz halten wir konstant bei 50 Prozent, weil es hier nur auf den Unterschied zwischen den Bundesstaaten ankommt. Tatsächlich lag der Spitzensatz unmittelbar vor 2001 bei 55 Prozent und wurde danach schrittweise gesenkt. Die Entwicklung der Steuersätze bis 2007 lässt sich in Figure D bei [Jacobson et al. (2007)](https://www.irs.gov/pub/irs-soi/11pwcompench1aestate.pdf) nachschauen. 2017 lag der Spitzensatz bei 40 Prozent (vgl. Moretti & Wilson, 2023b).
+
+Vor 2001 erhoben außerdem alle Bundesstaaten sogenannte "Pick-up-Taxes" in Höhe der Bundesgutschrift. Sie waren in allen Staaten gleich und veränderten die Gesamtbelastung nicht, weshalb auch Moretti & Wilson (2023b) sie außer Acht lassen. 
+
+Seit 2005 kann die staatliche Erbschaftsteuer bei der Berechnung der Bundessteuer abgezogen werden. Die tatsächliche Mehrbelastung ist deshalb kleiner als 160 Mio. Dollar, bleibt aber deutlich (vgl. Moretti & Wilson, 2023b).
+#>
+
+Diese Reform ist für die empirische Analyse besonders wertvoll, weil sie eine Art natürliches Experiment erzeugt. Vor 2001 spielte der Wohnsitzstaat für die gesamte Erbschaftsteuerbelastung der Ultra-Reichen kaum eine Rolle. Nach der Reform könnte sich das ändern, sodass wir untersuchen können, ob sich die Wohnortwahl der Forbes 400 in Staaten mit und ohne Estate Tax unterschiedlich entwickelt.
+
+### 1.1 -- Estate Tax nach Bundesstaat
+
+Bevor wir mit der empirischen Analyse beginnen, betrachten wir, wie sich die Estate Tax über die US-Bundesstaaten und über die Zeit verteilt. Da sich durch die Reform von 2001 die steuerlichen Anreize zwischen den Bundesstaaten deutlich verändert haben, interessiert uns insbesondere, welche Staaten ihre Estate Tax danach beibehalten, abgeschafft oder neu eingeführt haben. So erhalten wir einen ersten Überblick über die steuerliche Ausgangslage vor und nach der Reform.
+
+#< info "readRDS()"
+`readRDS()` liest Dateien im `.rds`-Format in R ein. Die Funktion gehört zu Base R, weshalb kein zusätzliches Paket benötigt wird. Verwendet wird die Funktion, indem der Dateiname oder Pfad übergeben wird, z. B. `dat <- readRDS("daten.rds")`.
+#>
+
+**Aufgabe**: Zuerst laden wir den Datensatz `"State_Year.rds"` mit der Funktion `readRDS()` und speichern ihn in der Variable `stateyear`. Ersetze den Platzhalter "___" durch den passenden Befehl.
+
+```{r "1_1_0"}
+#< fill_in
+stateyear <- ___("State_Year.rds")
+#>
+stateyear <- readRDS("State_Year.rds")
+```
+
+Nach dem Laden wollen wir uns einen ersten Eindruck vom Datensatz verschaffen. In R gibt es dafür viele Möglichkeiten. Wir benutzen den Befehl `head()`, der die ersten sechs Zeilen eines Datensatzes anzeigt. Dafür schreiben wir einfach den Namen des Datensatzes in die Klammer. So sehen wir schnell, welche Variablen enthalten sind und wie die Daten aufgebaut sind, ohne den gesamten Datensatz ausgeben zu müssen.
+
+**Aufgabe**: Gib die ersten Zeilen des Datensatzes `stateyear` mit `head()` aus.
+
+```{r "1_1_0_1"}
+#< fill_in
+head(___)
+#>
+head(stateyear)
+```
+
+In der Ausgabe sehen wir, dass jede Zeile einen Bundesstaat (`abbr`) in einem bestimmten Jahr beschreibt. Die Variable `EI` gibt an, ob der jeweilige Staat in diesem Jahr eine Estate Tax erhoben hat. Sie nimmt den Wert 1 an, wenn eine Estate Tax besteht, und 0, wenn nicht. Die Variablen `stock` und `wealth` zeigen, wie viele Forbes-400-Personen in dem Staat leben und wie groß ihr gemeinsames Vermögen ist. Eine Übersicht über alle wichtigen Variablen findest du in der Info-Box.
+
+#< info "Datensatz State_Year.rds" 
+Der Datensatz `State_Year` enthält Beobachtungen auf Bundesstaat-Jahr-Ebene. Jede Zeile beschreibt somit einen US-Bundesstaat in einem bestimmten Jahr.
+
+Wichtige Abkürzungen sowohl für diesen als auch für weitere Datensätze sind:
+
+-   abbr: Abkürzung des Bundesstaates
+-   year: Beobachtungsjahr
+-   EI: Indikator für eine Estate Tax im jeweiligen Staat und Jahr
+-   stock: Anzahl der Forbes-400-Personen im Bundesstaat
+-   statenum: numerische Kennung des Bundesstaates
+-   PIT: durchschnittlicher Spitzensteuersatz auf persönliches Einkommen
+-   pop_90to97: Anzahl der Bevölkerung mit Einkommen zwischen dem 90. und 97. Perzentil
+-   wealth: gesamtes Vermögen der Forbes-400-Personen im Bundesstaat (in Mrd. USD, Preisbasis 2017)
+#>
+
+Um die Estate Tax nach Bundesstaat darstellen zu können, müssen wir die jährlichen Informationen nun zu zwei Zeiträumen zusammenfassen. So können wir für jeden Bundesstaat bestimmen, wie häufig dort bis einschließlich 2001 und nach 2001 eine Estate Tax galt.
+
+R bietet zahlreiche Pakete, die zusätzliche Funktionen für die Datenanalyse bereitstellen. Zu den häufig verwendeten Paketen gehören beispielsweise `dplyr` zur Datenbearbeitung und `ggplot2` zur Erstellung von Grafiken. Um die Funktionen eines Pakets nutzen zu können, müssen wir es zunächst mit `library()` laden.
+
+#< info "mutate()" 
+Die Funktion `mutate()` aus dem Paket `dplyr` erstellt neue Variablen oder verändert bestehende Variablen in einem Datensatz. Es bleiben dabei alle bisherigen Variablen erhalten, und die neuen Spalten werden einfach hinzugefügt. Verwendet wird die Funktion, indem man den Namen der neuen Variable und ihre Berechnung angibt, z.B. `dat <- mutate(dat, neue_var = alte_var * 2)`.
+#>
+
+#< info "Der Pipe-Operator %>%" 
+Mit `%>%` aus dem Paket `dplyr` lassen sich mehrere Befehle hintereinander ausführen. Das Ergebnis eines Befehls wird dabei automatisch an den nächsten weitergegeben. Man kann `%>%` als „und dann“ lesen.
+
+**Beispiel:** Wir erstellen einen kleinen Datensatz mit vier US-Bundesstaaten. Die Variable `Estate_tax` gibt an, ob ein Bundesstaat eine eigene Erbschaftsteuer erhebt (`1`) oder nicht (`0`). Anschließend filtern wir die Bundesstaaten mit einer Estate Tax heraus.
+
+
+```{r}
+states <- data.frame(
+  State = c("New York", "Florida", "Texas", "Washington"),
+  Estate_tax = c(1, 0, 0, 1)
+)
+
+states %>%
+  filter(Estate_tax == 1) %>%
+  head()
+```
+
+Ohne Pipe müsste man die Befehle ineinander verschachteln:
+
+```{r}
+head(filter(states, Estate_tax == 1))
+```
+
+Beide Varianten liefern dasselbe Ergebnis. Die Pipe macht den Code jedoch übersichtlicher und leichter lesbar.
+#>
+
+Für den Überblick brauchen wir nur drei Informationen: den Bundesstaat (`abbr`), das Jahr (`year`) und ob es in diesem Jahr eine Estate Tax gab (`EI`). Mit der Funktion `select()` aus dem Paket `dplyr` können wir gezielt diese drei Spalten auswählen und die übrigen Spalten aus dem Datensatz entfernen.
+
+Danach wollen wir jede Beobachtung einer Zeit zuordnen, vor oder nach der Reform von 2001. Dafür erstellen wir mit `mutate()` eine neue Variable `period`. Mit `ifelse()` legen wir fest, welchen Wert die Variable bekommt: Liegt das Jahr bei `2001` oder früher, erhält sie den Wert "pre", liegt es nach `2001`, den Wert "post".
+
+**Aufgabe**: Lade zuerst das Paket `dplyr`. Fülle die Lücken mit den passenden Variablen und Werten aus dem Text. Lass dir anschließend den Datensatz mit `sample_n()` anzeigen.
+
+```{r "1_1_1"}
+#< fill_in
+library(dplyr)
+
+# Fülle die Lücken
+data  <- stateyear %>%
+  select(___, ___, ___) %>%
+  mutate(period = ifelse(year <= ___, "pre", "post"))
+
+sample_n(data, 6)
+#>
+library(dplyr)
+
+data <- stateyear %>%
+  select(abbr, year, EI) %>%
+  mutate(period = ifelse(year <= 2001, "pre", "post"))
+
+sample_n(data, 6)
+```
+
+Mit `sample_n()` lassen wir uns eine zufällige Auswahl von Zeilen aus dem Datensatz anzeigen. Im Gegensatz zu `head()`, das immer die ersten sechs Zeilen zeigt, wählt `sample_n()` die Beobachtungen zufällig aus. So erhalten wir einen Einblick in unterschiedliche Stellen des Datensatzes. 
+Wir sehen jetzt für jede Beobachtung, ob sie vor oder nach der Reform liegt. 
+
+Im nächsten Schritt fassen wir die einzelnen Jahre zu zwei Zeiträumen zusammen und ordnen die Bundesstaaten.
+
+#< info "group_by() und summarise()" 
+Mit `group_by()` teilt man einen Datensatz in Gruppen auf, z.B. nach Bundesstaat. 
+
+`summarise()` berechnet dann für jede Gruppe einen zusammenfassenden Wert, z.B. einen Mittelwert mit `mean()`. Mit `.groups = "drop"` wird die Gruppierung danach wieder aufgehoben.
+#>
+
+Da `EI` nur die Werte 0 und 1 annimmt, entspricht der Mittelwert von `EI` dem Anteil der Jahre mit Estate Tax. Ein Wert von 0,75 bedeutet zum Beispiel, dass ein Staat in 75 Prozent der Jahre eine Estate Tax hatte. Diesen Anteil berechnen wir mit `group_by()` und `summarise()` für jeden Bundesstaat und jeden Zeitraum.
+
+#< info "case_when()" 
+`case_when()` prüft mehrere Bedingungen nacheinander und vergibt je nach Bedingung einen Wert. Jede Zeile hat den Aufbau `Bedingung ~ Wert`. Es gilt immer die erste Bedingung, die zutrifft.
+#>
+
+Anschließend erzeugen wir mit `mutate()` und `case_when()` die Variable `EI_category`. Sie gibt an, ob ein Staat die Steuer in keinem Jahr, in weniger als der Hälfte, in mehr als der Hälfte oder in allen Jahren des jeweiligen Zeitraums hatte.
+
+**Aufgabe**: Der Code ist bereits vorgegeben. Du kannst ihn einfach mit `check` ausführen.
+
+```{r "1_1_2"}
+#< task
+df <- data %>%
+  group_by(abbr, period) %>%
+  summarise(EI_share = mean(EI), .groups = "drop") %>%
+  mutate(EI_category = case_when(
+    EI_share == 0   ~ "Nie",
+    EI_share <= 0.5 ~ "Bis zur Hälfte",
+    EI_share < 1    ~ "Mehr als die Hälfte",
+    EI_share == 1   ~ "Alle Jahre"
+  )) %>%
+  # Reihenfolge der Kategorien festlegen
+  mutate(EI_category = factor(
+    EI_category, levels = c("Alle Jahre", "Mehr als die Hälfte", "Bis zur Hälfte", "Nie"))
+    )
+
+sample_n(df, 6)
+#>
+
+```
+
+In der Ausgabe sehen wir jetzt für jeden Bundesstaat und jeden Zeitraum, wie häufig dort eine Estate Tax galt. Diese Ergebnisse wollen wir im Folgenden auf einer Karte darstellen.
+
+Dafür brauchen wir zunächst die geografischen Grenzen der US-Bundesstaaten. Diese stellt das Paket `USAboundaries` bereit. Es enthält Grenzdaten für die USA, zum Beispiel für Bundesstaaten, Counties oder Territorien. Mit dem Befehl `us_states()` laden wir die Grenzen der Bundesstaaten als sogenannte sf-Objekte. Ein sf-Objekt ist ein Datensatz, der neben normalen Variablen auch die Form und Lage jedes Bundesstaates enthält. So kann R die Staaten später als Karte zeichnen.
+
+#< info "Paket sf" 
+Das Paket `sf` dient in R zur Verarbeitung räumlicher Daten. Es ermöglicht, geografische Objekte wie Punkte, Linien und Flächen in tabellarischer Form zu speichern und mit speziellen Funktionen räumlich zu transformieren, zu bearbeiten und zu visualisieren. 
+#>
+
+**Aufgabe**: Zuerst laden wir das Paket `USAboundaries` und `sf`. Anschließend bereiten wir die Geodaten der US-Bundesstaaten vor, indem wir die Staatskürzel `abbr` und die zugehörige `geometry` übernehmen, die Karte auf die USA zentrieren und Puerto Rico ausschließen. Zum Schluss verknüpfen wir die Geodaten jeweils mit den Daten für den Zeitraum vor bzw. bis 2001 `pre` und nach 2001 `post`. Fülle die Lücken.
+
+
+```{r "1_1_3"}
+#< fill_in
+library(___)
+library(sf)
+
+# Staaten Geometrie
+states_sf <- us_states() %>%
+  st_transform(crs = 5070)  %>%
+  select(abbr = state_abbr, geometry) %>% 
+  # Entfernen von Puerto Rico
+  filter(!abbr %in% c("PR"))
+
+# Verbinden der Geometrie und der Steuerinformationen
+map_pre <- left_join(states_sf, df %>% filter(period == "pre"), by = "abbr")
+map_post <- left_join(states_sf, df %>% filter(period == "___"), by = "abbr")
+
+# Ausgabe
+head(map_pre)
+#>
+library(USAboundaries)
+library(sf)
+
+# Staaten Geometrie
+states_sf <- us_states() %>%
+  st_transform(crs = 5070)  %>%
+  select(abbr = state_abbr, geometry) %>% 
+  filter(!abbr %in% c("PR"))
+
+map_pre <- left_join(states_sf, df %>% filter(period == "pre"), by = "abbr")
+map_post <- left_join(states_sf, df %>% filter(period == "post"), by = "abbr")
+
+head(map_pre)
+
+```
+
+Mit `left_join()` verknüpfen wir die Geodaten mit den Steuerinformationen aus `df`. Die Zuordnung erfolgt über die gemeinsame Variable `abbr`, die das Kürzel des jeweiligen Bundesstaates enthält. Dabei bleiben alle Bundesstaaten aus `states_sf` erhalten.
+
+Im nächsten Schritt wollen wir die räumliche Verteilung der Estate Tax auf einer Karte veranschaulichen. Dafür verwenden wir `ggplot()` aus dem Paket `ggplot2`, mit dem sich verschiedene Arten von Diagrammen und Grafiken erstellen lassen.
+
+#< info "Grafiken mit ggplot2"
+Das R-Paket `ggplot2` ermöglicht es, Daten auf unterschiedliche Weise grafisch darzustellen. Dazu gehören beispielsweise Streudiagramme, Balkendiagramme, Liniendiagramme und geografische Karten.
+
+Eine Grafik mit `ggplot2` wird schrittweise aus verschiedenen Elementen aufgebaut. Die wichtigsten Funktionen sind:
+
+- **`ggplot()`**: Legt den Datensatz fest, der für die Grafik verwendet werden soll.
+- **`aes()`**: Bestimmt, welche Variablen grafisch dargestellt werden, beispielsweise auf der x- und y-Achse oder durch unterschiedliche Farben.
+- **`geom_*()`**: Legt die Art der Darstellung fest. Beispielsweise erzeugt `geom_point()` ein Streudiagramm, `geom_line()` ein Liniendiagramm und `geom_sf()` eine geografische Karte.
+- **`labs()`**: Ermöglicht es, Titel, Achsenbeschriftungen und Legenden anzupassen.
+- **`theme()`**: Dient dazu, das Erscheinungsbild einer Grafik individuell zu gestalten.
+
+Die einzelnen Elemente werden mit dem Zeichen `+` miteinander verbunden. Dadurch können Grafiken schrittweise erweitert und angepasst werden.
+
+Für unsere Analyse verwenden wir insbesondere `geom_sf()`. Diese Funktion ist speziell für räumliche Daten geeignet und ermöglicht es, die Grenzen der US-Bundesstaaten darzustellen. Mithilfe von `aes(fill = EI_category)` können wir die Bundesstaaten entsprechend ihrer Steuerkategorie unterschiedlich einfärben.
+#>
+
+Für beide Zeiträume erstellen wir jeweils eine eigene Karte. Die Bundesstaaten werden dabei anhand der zuvor erzeugten Variable `EI_category` eingefärbt. Dadurch lässt sich direkt erkennen, in welchen Staaten die Estate Tax während des jeweiligen Zeitraums häufig, nur teilweise oder gar nicht erhoben wurde. 
+
+Um die beiden Zeiträume direkt miteinander vergleichen zu können, stellen wir die Karten anschließend nebeneinander dar. Dafür verwenden wir das Paket `patchwork`, mit dem sich mehrere ggplot2-Grafiken zu einer gemeinsamen Abbildung kombinieren lassen.
+
+**Aufgabe**: Lade zunächst das Paket `ggplot2` und erstelle jeweils eine Karte für den Zeitraum bis 2001 (`pre`) und nach 2001 (`post`). Verwende dafür die Datensätze `map_pre` und `map_post` und färbe die Bundesstaaten anhand der Variable `EI_category` ein. Anschließend verwenden wir das Paket `patchwork`, um beide Karten nebeneinander darzustellen. Fülle die Lücken mit den richtigen Variablen und Paketnamen aus.
+
+```{r "1_1_4"}
+#< fill_in
+library(ggplot2)
+
+# ggplot Periode "pre"
+plot_pre <- ggplot(map_pre) +
+  geom_sf(aes(fill = ___), color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = c("red",  "orange", "yellow", "white"), 
+                    na.translate = FALSE, name = "Erbschaftsteuer") +
+  theme_void() +
+  ggtitle("1982–2001")
+
+# ggplot Periode "post"
+plot_post <- ggplot(___) +
+  geom_sf(aes(fill = EI_category), color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = c("red",  "orange", "yellow", "white"), 
+                    na.translate = FALSE, name = "Erbschaftsteuer") +
+  theme_void() +
+  ggtitle("2002–2017") 
+
+# Ausgabe mit patchwork
+library(___)
+
+((plot_pre | plot_post) +
+  plot_layout(guides = "collect")) &
+  theme(legend.position = "bottom")
+#>
+library(ggplot2)
+
+plot_pre <- ggplot(map_pre) +
+  geom_sf(aes(fill = EI_category), color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = c("red",  "orange", "yellow", "white"), 
+                    na.translate = FALSE, name = "Erbschaftsteuer") +
+  theme_void() +
+  ggtitle("1982–2001") 
+
+plot_post <- ggplot(map_post) +
+  geom_sf(aes(fill = EI_category), color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = c("red",  "orange", "yellow", "white"), 
+                    na.translate = FALSE, name = "Erbschaftsteuer") +
+  theme_void() +
+  ggtitle("2002–2017") 
+
+library(patchwork)
+
+((plot_pre | plot_post) +
+  plot_layout(guides = "collect")) &
+  theme(legend.position = "bottom")
+```
+
+#< award "Map Explorer"
+Sehr gut! Du hast die geografische Verteilung der Estate Tax vor und nach der Reform von 2001 erfolgreich dargestellt und verglichen.
+#>
+
+#< info "patchwork Alternativen" 
+Alternativ zu `patchwork` können auch Pakete wie `gridExtra`, `cowplot` oder `ggpubr` verwendet werden, um mehrere Grafiken gemeinsam darzustellen. Wenn mehrere Grafiken auf demselben Datensatz basieren, bietet sich außerdem die Funktion `facet_wrap()` aus `ggplot2` an. 
+#>
+
+Die beiden Karten verdeutlichen, dass die Reform von 2001 die steuerliche Bedeutung der bundesstaatlichen Estate Taxes grundlegend veränderte.
+
+Im Zeitraum von 1982 bis 2001 erhoben noch vergleichsweise viele Bundesstaaten zumindest zeitweise eine eigene Estate Tax. Besonders im Nordosten und im Mittleren Westen finden sich mehrere Staaten, in denen die Steuer während des gesamten Zeitraums oder zumindest in mehr als der Hälfte der Jahre bestand. Gleichzeitig gab es jedoch auch bereits vor 2001 eine Reihe von Staaten, die während des gesamten Beobachtungszeitraums keine Estate Tax erhoben.
+
+Für den Zeitraum von 2002 bis 2017 zeigt sich ein anderes Bild. Die Zahl der Bundesstaaten mit einer Estate Tax ist insgesamt geringer, und in vielen Staaten wurde während dieses Zeitraums überhaupt keine entsprechende Steuer mehr erhoben. Dauerhaft oder über einen größeren Teil des Zeitraums bestand die Estate Tax nur noch in einer kleineren Gruppe von Staaten, die sich insbesondere im Nordosten der USA konzentriert.
+
+Es zeigt sich, dass die Estate Tax nach 2001 zunehmend nur noch in wenigen Bundesstaaten erhoben wurde. Ob sich diese Veränderungen auch im Wohnortverhalten der Forbes-400-Personen widerspiegeln, untersuchen wir in den folgenden Abschnitten genauer.
+
+### 1.2 -- Forbes 400 nach Bundesstaat
+
+Nachdem wir zunächst betrachtet haben, wie sich die Estate Tax zwischen den Bundesstaaten und über die Zeit verteilt, wenden wir uns nun der geografischen Verteilung der Forbes 400 zu. Dabei interessiert uns, in welchen Bundesstaaten besonders viele der reichsten US-Amerikaner leben und ob sich diese Verteilung verändert hat.
+
+Für einen ersten deskriptiven Vergleich betrachten wir die Jahre 1982 und 2017, also den Beginn und das Ende des Untersuchungszeitraums. Dadurch können wir erkennen, welche Bundesstaaten über die Zeit an Forbes-400-Personen gewonnen oder verloren haben und ob sich regionale Schwerpunkte verschoben haben.
+
+Um die geografische Verteilung der Forbes 400 zu veranschaulichen, erstellen wir für beide Jahre eine Karte der USA. Da sich die Anzahl der Forbes-400-Personen zwischen den Bundesstaaten stark unterscheidet, teilen wir die Staaten anhand ihrer Anzahl an Forbes-400-Personen in verschiedene Kategorien ein. So können wir die Unterschiede zwischen den Bundesstaaten besser erkennen.
+
+**Aufgabe**: Zuerst legen wir mit "breaks" die Grenzen der einzelnen Kategorien und mit "labels" die entsprechenden Beschriftungen fest. Anschließend beschränken wir den Datensatz `stateyear` auf die Jahre `1982` und `2017`. Mit `cut()` ordnen wir jedem Bundesstaat anhand der Anzahl seiner Forbes-400-Personen (`stock`) die passende Kategorie zu. Zuletzt wollen wir mit `sample_n()` uns sechs Zeilen der Daten `map_data` anzeigen. Ergänze den fehlenden Code.
+
+
+```{r "1_2_1"}
+#< task
+# Kategorien und Beschriftungen definieren
+breaks <- c(-Inf, 0, 2, 5, 10, 30, 70, Inf)
+labels <- c("0", "1–2", "3–5", "6–10", "11–30", "31–70", "71+")
+
+# Daten für 1982 und 2017 vorbereiten
+map_data <- stateyear %>%
+  filter(year %in% c(1982, 2017)) %>%
+  select(abbr, year, stock) %>%
+  mutate(
+    forbes400_pop = cut(stock, breaks = breaks, labels = labels)
+  )
+
+# Ausgabe
+# Gib hier deinen Code ein.
+#>
+breaks <- c(-Inf, 0, 2, 5, 10, 30, 70, Inf)
+labels <- c("0", "1–2", "3–5", "6–10", "11–30", "31–70", "71+")
+
+map_data <- stateyear %>%
+  filter(year %in% c(1982, 2017)) %>%
+  select(abbr, year, stock) %>%
+  mutate(
+    forbes400_pop = cut(stock, breaks = breaks, labels = labels)
+  )
+
+sample_n(map_data, 6)
+```
+
+Nun haben wir die Bundesstaaten in Kategorien eingeteilt. Um sie jetzt als Karte anzeigen zu können, brauchen wir erneut das Paket USAboundaries und die Geodaten. Da wir sie in der vorherigen Aufgabe bereits geladen haben, können wir sie einfach erneut als `states_sf` mit unserem neuen Datensatz `map_data` verknüpfen.
+
+**Aufgabe**: Wir verknüpfen die Daten für beide Jahre getrennt mit den zuvor erstellten Geodaten der US-Bundesstaaten `states_sf`. Der Code ist vorgegeben. Einfach auf `check` klicken.
+
+```{r "1_2_2"}
+#< task
+# Daten mit den Geodaten verknüpfen
+map_1982 <- left_join(states_sf, filter(map_data, year == 1982), by = "abbr")
+map_2017 <- left_join(states_sf, filter(map_data, year == 2017), by = "abbr")
+#>
+```
+
+Nachdem wir die Daten entsprechend aufbereitet und den Bundesstaaten zugeordnet haben, können wir die Verteilung der Forbes 400 nun grafisch veranschaulichen.
+
+Dafür erstellen wir für beide Jahre jeweils eine eigene Karte mit `ggplot()`. Die Bundesstaaten werden diesmal anhand der Variable `forbes400_pop` eingefärbt, die angibt, in welche Größenklasse die jeweilige Anzahl an Forbes-400-Personen fällt. Je dunkler die Einfärbung eines Bundesstaates, desto mehr Forbes-400-Personen leben dort.
+
+**Aufgabe**: Erstelle jeweils eine Karte für die Jahre `1982` und `2017`. Verwende dafür die Datensätze `map_1982` und `map_2017` und färbe die Bundesstaaten anhand der Variable `forbes400_pop` ein. Anschließend werden beide Karten nebeneinander und mit einer gemeinsamen Legende dargestellt. Fülle die Lücken.
+
+```{r "1_2_3"}
+#< fill_in
+# Karte A: 1982
+plot_1982 <- ___(map_1982) +
+  geom_sf(aes(fill = ___), color = "black", linewidth = 0.2) +
+  scale_fill_manual(
+    values = c("white", "lemonchiffon", "yellow", "gold", "orange", "red", "darkred"),
+    na.translate = FALSE, name = "Anzahl der\nForbes 400") +
+  theme_void()  +
+  ggtitle("1982")
+
+# Karte B: 2017
+plot_2017 <- ___(map_2017) +
+  geom_sf(aes(fill = ___), color = "black", linewidth = 0.2) +
+  scale_fill_manual(
+    values = c("white", "lemonchiffon", "yellow", "gold", "orange", "red", "darkred"),
+    na.translate = FALSE, name = "Anzahl der\nForbes 400") +
+  theme_void() +
+  ggtitle("2017") 
+
+# Ausgabe mit patchwork
+((plot_1982 | plot_2017) +
+  plot_layout(guides = "collect")) &
+  theme(legend.position = "bottom")
+#>
+
+plot_1982 <- ggplot(map_1982) +
+  geom_sf(aes(fill = forbes400_pop), color = "black", linewidth = 0.2) +
+  scale_fill_manual(
+    values = c("white", "lemonchiffon", "yellow", "gold", "orange", "red", "darkred"),
+    na.translate = FALSE, name = "Anzahl der\nForbes 400") +
+  theme_void()  +
+  ggtitle("1982")
+
+
+plot_2017 <- ggplot(map_2017) +
+  geom_sf(aes(fill = forbes400_pop), color = "black", linewidth = 0.2) +
+  scale_fill_manual(
+    values = c("white", "lemonchiffon", "yellow", "gold", "orange", "red", "darkred"),
+    na.translate = FALSE, name = "Anzahl der\nForbes 400") +
+  theme_void() +
+  ggtitle("2017") 
+
+((plot_1982 | plot_2017) +
+  plot_layout(guides = "collect")) &
+  theme(legend.position = "bottom")
+```
+
+#< quiz "Forbes 400 Karten"
+question: Welche Aussagen lassen sich aus dem Vergleich der Karten 1982 und 2017 ableiten?
+mc:
+    - Kalifornien gewinnt deutlich an Forbes-400-Personen*
+    - Florida weist 2017 eine stärkere Konzentration auf*
+    - Texas verliert zwischen 1982 und 2017 deutlich an Forbes-400-Personen
+    - Die Karten beweisen, dass die Estate Tax die Verschiebung verursacht hat
+success: Richtig!
+failure: Nicht alle Antworten sind korrekt. Versuche es erneut.
+#>
+
+Die beiden Karten zeigen, dass sich die geografische Verteilung der Forbes 400 zwischen 1982 und 2017 sichtbar verändert hat. In beiden Jahren konzentriert sich ein großer Teil der Forbes-400-Personen auf einige wenige Bundesstaaten, gleichzeitig verschieben sich die regionalen Schwerpunkte.
+
+Im Jahr 1982 weisen insbesondere New York, Kalifornien und Texas eine hohe Anzahl an Forbes-400-Personen auf. Viele Bundesstaaten, vor allem im Westen und in Teilen der Mitte der USA, haben dagegen nur wenige oder gar keine Mitglieder der Forbes 400.
+
+2017 verändert sich dieses Bild. Besonders Kalifornien gewinnt deutlich an Forbes-400-Personen und gehört nun zur höchsten Kategorie. Auch Florida weist eine stärkere Konzentration auf. Gleichzeitig sind Forbes-400-Personen über mehr Bundesstaaten verteilt, sodass weniger Staaten vollständig ohne Forbes-400-Personen bleiben.
+
+Die geografische Verteilung der Forbes 400 hat sich zwischen den beiden betrachteten Jahren deutlich verändert. Diese Veränderungen könnten darauf zurückzuführen sein, dass neue Personen aus anderen Bundesstaaten in die Forbes 400 aufgenommen wurden oder bestehende Mitglieder ihren Wohnsitz verlegt haben. Ob die Estate Tax einen Teil dieser Veränderungen erklären kann, untersuchen wir im weiteren Verlauf genauer.
+
+### 1.3 -- Anteil der Forbes-400-Personen in Estate-Tax-Staaten
+
+In den vorherigen Abschnitten haben wir zwei wichtige Entwicklungen betrachtet. Kapitel 1.1 hat gezeigt, dass sich die Verbreitung der Estate Tax zwischen den Bundesstaaten nach 2001 deutlich verändert hat. In Kapitel 1.2 wurde außerdem sichtbar, dass sich auch die geografische Verteilung der Forbes 400 im Zeitverlauf verschoben hat.
+
+Nun wollen wir beide Entwicklungen miteinander verbinden. Dazu untersuchen wir, welcher Anteil der Forbes-400-Personen in Bundesstaaten mit Estate Tax lebt und wie sich dieser Anteil rund um die Reform von 2001 entwickelt.
+
+Bevor wir uns die tatsächliche Entwicklung in den Daten ansehen, überlegen wir zunächst, welchen Effekt wir erwarten.
+
+#< quiz "Anteil Forbes 400 in ET-Staaten" 
+question: Wie sollte sich der Anteil der Forbes-400-Personen in Estate-Tax-Staaten nach der Reform von 2001 entwickeln? 
+
+sc: 
+- Der Anteil sollte steigen 
+- Keine Veränderung 
+- Der Anteil sollte sinken*
+
+success: Richtig! Aufgrund der höheren steuerlichen Belastung würden wir einen Rückgang erwarten. 
+failure: Nicht ganz. Überlege, wie sich die höhere steuerliche Belastung nach 2001 auf die Wohnortwahl auswirken könnte. 
+#>
+
+Für den folgenden Vergleich benötigen wir eine feste Einteilung der Bundesstaaten in Estate-Tax und Nicht-Estate-Tax-Staaten. Dafür verwenden wir den Estate-Tax-Status im Jahr 2001, also unmittelbar vor dem zentralen Reformzeitraum.
+
+Die neu erzeugte Variable `EI_2001` übernimmt für jeden Bundesstaat den Wert von EI im Jahr 2001 und hält diesen anschließend über alle Jahre konstant. Damit bleibt die Gruppenzugehörigkeit unabhängig von späteren Steueränderungen eines Bundesstaates bestehen.
+
+
+**Aufgabe**: Gruppiere den Datensatz mit `group_by()` nach Bundesstaaten (`abbr`). Erstelle anschließend mit `mutate()` die Variable `EI_2001`, die für jeden Bundesstaat den Estate-Tax-Status aus dem Jahr 2001 übernimmt und über alle Jahre konstant hält. Mit `EI[year == 2001]` wählen wir für jeden Bundesstaat den Estate-Tax-Status (`EI`) aus dem Jahr 2001 aus. Dieser Wert wird anschließend auf alle Jahre des jeweiligen Bundesstaates übertragen. So erhält jeder Bundesstaat einen festen Estate-Tax-Status, der unabhängig von späteren Steueränderungen bleibt. Zum Schluss heben wir die Gruppierung mit `ungroup()` wieder auf.
+
+```{r "1_3_1"}
+#< fill_in
+stateyear <- stateyear %>%
+  group_by(___) %>%
+  mutate(___ = EI[year == 2001]) %>%
+  ungroup()
+
+#>
+stateyear <- stateyear %>%
+  group_by(abbr) %>%
+  mutate(EI_2001 = EI[year == 2001]) %>%
+  ungroup()
+```
+
+Im nächsten Schritt vergleichen wir für jedes Jahr, wie viele Forbes-400-Personen in Staaten mit bzw. ohne Estate Tax im Jahr 2001 leben. Dazu gruppieren wir die Daten zunächst nach `year` und `EI_2001` und summieren anschließend mit `sum()` die Anzahl der Forbes-400-Personen über alle Bundesstaaten innerhalb der jeweiligen Gruppe.
+
+Mit `pivot_wider()` bringen wir die beiden Gruppen anschließend in getrennte Spalten. Dabei steht `s1` für die Anzahl der Forbes-400-Personen in Staaten mit Estate Tax im Jahr 2001 und `s0` für die entsprechende Anzahl in Staaten ohne Estate Tax. Auf dieser Grundlage berechnen wir mit `prop` den prozentualen Anteil der Forbes 400, die in Estate-Tax-Staaten leben.
+
+**Aufgabe**: Berechne für jedes Jahr die Anzahl der Forbes-400-Personen in Staaten mit und ohne Estate Tax und bestimme daraus den prozentualen Anteil, der in Estate-Tax-Staaten lebt. Fülle die Platzhalter mit den richtigen Variablen und Befehlen aus dem Text.
+
+```{r "1_3_2"}
+#< fill_in
+prob_forbes <- stateyear %>%
+  group_by(___, ___) %>%
+  summarise(stock = ___(stock), .groups = "drop") %>%
+  pivot_wider(names_from = EI_2001, values_from = stock, names_prefix = "s", values_fill = 0) %>%
+  mutate(prop = s1 / (s0 + s1) * 100)
+
+head(prob_forbes)
+#>
+prob_forbes <- stateyear %>%
+  group_by(year, EI_2001) %>%
+  summarise(stock = sum(stock), .groups = "drop") %>%
+  pivot_wider(names_from = EI_2001, values_from = stock, names_prefix = "s", values_fill = 0) %>%
+  mutate(prop = s1 / (s0 + s1) * 100)
+
+head(prob_forbes)
+```
+
+Nachdem wir den jährlichen Anteil der Forbes 400 in Estate-Tax-Staaten berechnet haben, wollen wir nun untersuchen, wie sich dieser Anteil vor und nach der Reform von 2001 unterscheidet.
+
+Dafür berechnen wir den durchschnittlichen Anteil für die Jahre bis einschließlich `2001` (`pre`) und für die Jahre danach (`post`). Diese Mittelwerte verwenden wir anschließend als Referenzlinien in unserer Grafik, um die Unterschiede zwischen den beiden Zeiträumen besser erkennen zu können.
+
+**Aufgabe**: Berechne mit `mean()` die durchschnittlichen Anteile vor und nach der Reform. Speichere die Ergebnisse zunächst in `pre` und `post` und erstelle anschließend mit `mutate()` die Variable `period_mean`, die jedem Jahr den entsprechenden Mittelwert zuordnet. Lass dir zum Schluss die beiden Mittelwerte `pre` und `post` anzeigen. Ersetze die Platzhalter.
+
+```{r "1_3_3"}
+#< fill_in
+pre  <- ___(prob_forbes$prop[prob_forbes$year <= ___])
+post <- mean(prob_forbes$prop[prob_forbes$year >  2001])
+
+prob_forbes <- prob_forbes %>%
+  mutate(
+    period_mean = if_else(year <= 2001, pre, post)
+  )
+
+# Ausgabe der durchschnittlichen Anteile
+pre
+post
+#>
+pre  <- mean(prob_forbes$prop[prob_forbes$year <= 2001])
+post <- mean(prob_forbes$prop[prob_forbes$year >  2001])
+
+prob_forbes <- prob_forbes %>%
+  mutate(
+    period_mean = if_else(year <= 2001, pre, post)
+  )
+
+pre
+post
+```
+
+Ein erster Blick auf die berechneten Durchschnittswerte zeigt bereits, dass der Anteil der Forbes 400 in Estate-Tax-Staaten nach 2001 niedriger liegt als zuvor. Um diese Entwicklung genauer zu betrachten, stellen wir den jährlichen Verlauf nun grafisch dar. Neben den jährlichen Anteilen zeigen wir auch die zuvor berechneten Durchschnittswerte für die Zeiträume vor und nach der Reform.
+
+Das Jahr 2001 markieren wir mit einer vertikalen Linie als Beginn der Reform. Der schattierte Bereich von 2001 bis 2004 kennzeichnet den Reformzeitraum, in dem die Bundesgutschrift zwischen 2002 und 2004 schrittweise abgeschafft wurde.
+
+**Aufgabe**: Erstelle mit `ggplot()` ein Liniendiagramm, das den jährlichen Anteil der Forbes 400 in den Estate-Tax-Staaten von 2001 zeigt. Ergänze die durchschnittlichen Anteile vor und nach der Reform als gestrichelte Linien sowie die Markierungen für die Reform und den Übergangszeitraum. Überlege dabei, welche Variable auf der x-Achse stehen muss, wenn die y-Achse den Anteil der Forbes 400 zeigt.
+
+```{r "1_3_4"}
+#< fill_in
+ggplot(prob_forbes, aes(x = ___)) +
+  annotate("rect", xmin = 2001, xmax = 2004, ymin = -Inf, ymax = Inf, alpha = 0.10) +
+  geom_line(aes(y = prop), linewidth = 0.7) +
+  geom_line(aes(y = period_mean, group = year <= 2001), linetype = "dashed", linewidth = 0.7, colour = "red") +
+  geom_vline(xintercept = 2001, linewidth = 0.8) +
+  scale_y_continuous(limits = c(0, 30), breaks = seq(0, 30, 5)) +
+  labs(title = "Anteil der Forbes 400 in Estate-Tax-Staaten", x = "Jahr", y = "Anteil der Forbes 400 (%)") +
+  theme_bw()
+#>
+ggplot(prob_forbes, aes(x = year)) +
+  annotate("rect", xmin = 2001, xmax = 2004, ymin = -Inf, ymax = Inf, alpha = 0.10) +
+  geom_line(aes(y = prop), linewidth = 0.7) +
+  geom_line(aes(y = period_mean, group = year <= 2001), linetype = "dashed", linewidth = 0.7, colour = "red") +
+  geom_vline(xintercept = 2001, linewidth = 0.8) +
+  scale_y_continuous(limits = c(0, 30), breaks = seq(0, 30, 5)) +
+  labs(title = "Anteil der Forbes 400 in Estate-Tax-Staaten", x = "Jahr", y = "Anteil der Forbes 400 (%)") +
+  theme_bw()
+```
+
+#< award "Erste Hinweise"
+Herzlichen Glückwunsch! Du hast das erste Kapitel erfolgreich abgeschlossen. Du hast die Datensätze kennengelernt und die geografische Verteilung der Estate Tax sowie der Forbes 400 vor und nach der Reform von 2001 untersucht. Damit hast du die Grundlage für die weiteren Analysen geschaffen.
+#>
+
+Nach 2001 liegt der durchschnittliche Anteil der Forbes-400-Personen in Estate-Tax-Staaten deutlich unter dem Niveau der Jahre davor. Damit entspricht die beobachtete Entwicklung unserer zuvor formulierten Erwartung. Der Rückgang liefert daher einen ersten deskriptiven Hinweis darauf, dass sehr vermögende Personen auf diese veränderten steuerlichen Anreize reagiert haben könnten.
+
+Ob dieser Zusammenhang tatsächlich kausal ist, lässt sich aus der Grafik allein jedoch noch nicht ableiten und wird in den folgenden Analysen genauer untersucht.
+
+<!-- ==================================================================================================================== -->
+
+## Exercise 2. -- Auswirkungen des Todes von Milliardären
+
+In Kapitel 1 haben wir gesehen, dass sich nach der Reform von 2001 sowohl die geografische Verteilung der Estate Taxes als auch die Wohnorte der Forbes-400-Personen verändert haben. Insbesondere sank der Anteil der reichsten US-Amerikaner, die in Estate-Tax-Staaten leben. Dieser Befund könnte darauf hindeuten, dass die Estate Tax das Wohnsitzverhalten sehr vermögender Personen beeinflusst.
+
+Bisher haben wir jedoch nur die geografische Verteilung betrachtet. Offen bleibt, welche finanziellen Folgen die Wohnortwahl einzelner Milliardäre für die Bundesstaaten hätte. Da die Estate Tax erst beim Tod einer Person anfällt, kann das Versterben eines besonders vermögenden Einwohners zu erheblichen Steuereinnahmen für dessen Wohnsitzstaat führen. Umgekehrt könnten einem Bundesstaat hohe Einnahmen entgehen, wenn ein Milliardär seinen Wohnsitz zuvor in einen Staat ohne Estate Tax verlegt.
+
+In diesem Kapitel wollen wir daher untersuchen, ob sich der Tod eines Forbes-400-Milliardärs tatsächlich in den Erbschaftsteuereinnahmen seines Wohnsitzstaates bemerkbar macht. Dafür betrachten wir die Entwicklung der staatlichen Einnahmen vor und nach dem Tod einzelner Milliardäre. Anhand von zwei Beispielen wollen wir herausfinden, ob die Einnahmen nach einem Todesfall deutlich ansteigen.
+
+#< quiz "Estate-Tax-Einnahmen"
+question: Was vermutest du? Wie wirkt sich der Tod eines Forbes-400-Milliardärs auf die Estate-Tax-Einnahmen seines Wohnsitzstaates aus?
+sc:
+    - Die Einnahmen des Bundesstaates steigen deutlich an.*
+    - Die Einnahmen des Bundesstaates sinken, da der Milliardär keine Steuern mehr zahlt.
+    - Die Einnahmen des Bundesstaates bleiben weitgehend unverändert.
+success: Richtig!
+failure: Leider falsch. Überlege, wann die Estate Tax erhoben wird.
+#>
+
+**Aufgabe**: Zuerst laden wir den benötigten Datensatz `"Estate_Tax.rds"` mit `readRDS()` und speichern ihn in `EI_Tax_data`. Gib anschließend mit `head()` die ersten Zeilen des Datensatzes aus, um einen ersten Überblick über die enthaltenen Variablen und Beobachtungen zu erhalten. Gib den benötigten Code einfach ein. Falls du Probleme hast, kannst du mit `hint` einen Tipp bekommen oder in die vorherigen Aufgaben schauen.
+
+```{r "2_0"}
+#< task_notest
+# Lade den Datensatz und zeige die ersten Zeilen an.
+#>
+EI_Tax_data <- readRDS("Estate_Tax.rds")
+
+head(EI_Tax_data)
+```
+
+Der Datensatz `Estate_Tax.rds` enthält Informationen über die jährlichen Einnahmen der US-Bundesstaaten aus Erbschaft- und Schenkungsteuern. Die Variable `abbr` gibt das Kürzel des Bundesstaates an, `Year` das jeweilige Jahr und `EI_Tax` die entsprechenden Steuereinnahmen.
+
+Die Daten stammen aus dem *Annual Survey of State Tax Collections* des US Census Bureau (U.S. Census Bureau, o. J.). Diese jährliche Erhebung erfasst die Steuereinnahmen der US-Bundesstaaten. Moretti und Wilson (2023b) verwenden daraus die Kategorie T50 („Death and Gift Taxes“), die Einnahmen aus Nachlass-, Erbschaft- und Schenkungsteuern zusammenfasst.
+
+Damit wir die Einnahmen über verschiedene Jahre vergleichen können, wurden die Beträge mithilfe des Verbraucherpreisindex (CPI-U) auf das Preisniveau von 2017 umgerechnet. Die Werte sind somit preisbereinigt und werden in Tausend US-Dollar angegeben.
+
+### 1. Fall: Bud Walton
+
+Als ersten Fall betrachten wir James („Bud") L. Walton, der zusammen mit seinem Bruder Sam Walton Walmart mitbegründete. Bud Walton verstarb 1995 und hatte seinen Wohnsitz in Arkansas.
+
+**Aufgabe**: Vervollständige den Code, indem du die passenden Variablen einsetzt. Wir wollen die Einnahmen `EI_Tax` auf das Jahr `Year` abbilden.
+
+```{r "2_1"}
+#< fill_in
+EI_Tax_data %>%
+  filter(abbr == "AR", Year >= 1980) %>%
+  ggplot(aes(x = ___, y = ___)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = 1995, linetype = "dashed") +
+  labs(
+    title = "Arkansas",
+    x = "Jahr",
+    y = "Erbschaftsteuereinnahmen (Tsd. USD)"
+  ) +
+  theme_bw()
+#>
+EI_Tax_data %>%
+  filter(abbr == "AR", Year >= 1980) %>%
+  ggplot(aes(x = Year, y = EI_Tax)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = 1995, linetype = "dashed") +
+  labs(
+    title = "Arkansas",
+    x = "Jahr",
+    y = "Erbschaftsteuereinnahmen (Tsd. USD)"
+  ) +
+  theme_bw()
+```
+
+Man erkennt in der Grafik ein klares Muster: Vor 1995 verlaufen die Erbschaftsteuereinnahmen von Arkansas flach und auf niedrigem Niveau. Rund um den markierten Todeszeitpunkt (1995) steigen die Einnahmen sprunghaft an und erreichen 1996 ihren höchsten Wert. Anschließend fallen sie wieder deutlich ab und gehen schließlich auf null zurück.
+
+Der starke Anstieg der Erbschaftsteuereinnahmen kurz nach dem Tod von Bud Walton deutet darauf hin, dass sein Nachlass einen erheblichen Einfluss auf die Steuereinnahmen von Arkansas gehabt haben könnte.
+
+### 2. Fall: Edward Gaylord
+
+Als zweiten Fall betrachten wir Edward Gaylord, einen Medien- und Unterhaltungsunternehmer aus Oklahoma, der 2003 verstarb. Dazu betrachten wir die Entwicklung der Einnahmen in Oklahoma über die Zeit und markieren das Todesjahr 2003 in der Grafik.
+
+**Aufgabe**: Der Code ist bereits vorgegeben. Einfach auf `check` klicken.
+
+```{r "2_2"}
+#< task
+EI_Tax_data %>%
+  filter(abbr == "OK", Year >= 1980) %>%
+  ggplot(aes(x = Year, y = EI_Tax)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = 2003, linetype = "dashed") +
+  labs(
+    title = "Oklahoma",
+    x = "Jahr",
+    y = "Erbschaftsteuereinnahmen (Tsd. USD)"
+  ) +
+  theme_bw()
+#>
+```
+
+In den Jahren vor 2003 verlaufen die Einnahmen nicht flach wie im Fall Arkansas, sondern schwanken stärker und bewegen sich insgesamt auf einem höheren Niveau. Rund um den markierten Todeszeitpunkt ist im Jahr 2004 ein Anstieg auf den höchsten Wert der gesamten Zeitreihe zu erkennen. Danach fallen die Einnahmen deutlich ab und sinken bis 2011 auf ein Niveau nahe null, auf dem sie verbleiben.
+
+Auch hier zeigt sich also um den Todeszeitpunkt ein kurzzeitiger Ausschlag nach oben, was darauf hindeutet, dass der Tod von Edward Gaylord und die damit fällige Erbschaftsteuer zu diesem Anstieg in den staatlichen Einnahmen beigetragen haben. Allerdings ist das Muster hier weniger eindeutig als im ersten Fall, da die Einnahmen schon vorher stark schwankten und der Anstieg im Verhältnis zum übrigen Verlauf geringer ausfällt.
+
+#< quiz "Einnahmen sinken auf null"
+question: Warum fallen die Erbschaftsteuereinnahmen in Arkansas und Oklahoma später auf nahezu null?
+sc:
+    - Weil keine Milliardäre mehr sterben
+    - Weil beide Staaten ihre Estate Tax abgeschafft haben bzw. diese weggefallen ist*
+    - Weil die Daten nach 2010 fehlen
+success: Richtig!
+failure: Leider falsch.
+#>
+
+In beiden Bundesstaaten fällt auf, dass die Erbschaftsteuereinnahmen im Laufe der Zeit auf nahezu null sinken. Dies lässt sich durch den Wegfall der jeweiligen Estate Tax erklären. In Arkansas entfiel die Steuer ab 2005 wegen der Abschaffung der Bundesgutschrift, während Oklahoma seine Estate Tax im Jahr 2010 abschaffte (vgl. Michael, 2009).
+
+Beide Fallbeispiele zeigen zudem, dass die Erbschaftsteuereinnahmen im Jahr nach dem Tod eines Forbes-400-Milliardärs deutlich ansteigen. Dies deutet darauf hin, dass bereits der Tod einer einzelnen sehr vermögenden Person erhebliche Auswirkungen auf die Steuereinnahmen eines Bundesstaates haben kann. Allerdings lässt sich anhand dieser beiden Beispiele noch nicht eindeutig feststellen, wie groß der tatsächliche Effekt solcher Todesfälle ist.
+
+<!-- ==================================================================================================================== -->
+
+## Exercise 3. -- Auswirkungen der Erbschaftsteuer auf den Standort der Forbes 400
+
+Die beiden Fallbeispiele zeigen anschaulich, dass der Tod einzelner sehr vermögender Personen die Erbschaftsteuereinnahmen eines Bundesstaates stark beeinflussen kann. Sie erlauben jedoch keine Aussage darüber, ob eine Estate Tax auch die Wohnortwahl der Forbes 400 beeinflusst. Dafür benötigen wir einen systematischeren Vergleich zwischen Bundesstaaten mit und ohne Estate Tax.
+
+Im folgenden Kapitel verwenden wir deshalb einen Difference-in-Differences-Ansatz (DiD). Dabei vergleichen wir, wie sich die Zahl der Forbes-400-Personen in Estate-Tax-Staaten relativ zu Staaten ohne Estate Tax vor und nach der Reform von 2001 entwickelt. Bevor wir diesen Effekt schätzen, betrachten wir zunächst eine zentrale Voraussetzung des DiD-Ansatzes: die Parallel-Trends-Assumption (vgl. Angrist & Pischke, 2009).
+
+### Parallel Trends Assumption
+
+Die zentrale Annahme des Difference-in-Differences-Ansatzes ist die sogenannte Parallel-Trends-Assumption. Sie besagt, dass sich die abhängige Variable in Behandlungs- und Kontrollgruppe ohne die Reform im Durchschnitt ähnlich entwickelt hätte. Die Gruppen müssen also nicht dasselbe Ausgangsniveau haben. Entscheidend ist vielmehr, dass ihre Entwicklung ohne den steuerlichen Schock parallel verlaufen wäre. Der DiD-Schätzer interpretiert dann die Abweichung von diesem gemeinsamen Trend nach der Reform als kausalen Effekt der Behandlung (vgl. Angrist & Pischke, 2009; Roth et al., 2023).
+
+Schematisch dargestellt würde die Parallel-Trends-Assumption in etwa so aussehen: Die Behandlungs- und Kontrollgruppe folgen vor der Reform einem ähnlichen Verlauf. Erst nach dem Eingriff weichen die Entwicklungen voneinander ab.
+
+**Aufgabe**: Führe den folgenden Code aus. Eine genauere Betrachtung des Codes ist nicht notwendig.
+
+```{r "3_0_0", optional = TRUE}
+#< task_notest
+library(tibble)
+
+example_data <- tibble(
+  year = rep(1998:2004, 2),
+  group = rep(c("Behandlungsgruppe", "Kontrollgruppe"), each = 7),
+  outcome = c(10, 11, 12, 13, 12, 11, 10,
+              6, 7, 8, 9, 9, 9, 9)
+)
+
+ggplot(example_data, aes(x = year, y = outcome, color = group)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = 2001, linetype = "dashed") +
+  labs(
+    title = "Parallel-Trends-Annahme",
+    x = "Jahr",
+    y = "Ergebnis",
+    color = "Gruppe"
+  ) +
+  theme_minimal()
+#>
+```
+
+Bei unseren Untersuchungen besteht die `Behandlungsgruppe` aus Bundesstaaten mit Estate Tax, während Bundesstaaten ohne Estate Tax als `Kontrollgruppe` dienen. Der relevante Schock ist die Steuerreform EGTRRA aus dem Jahr 2001.
+
+Vor 2001 spielte die bundesstaatliche Estate Tax für die gesamte Erbschaftsteuerbelastung der Ultra-Reichen kaum eine Rolle, da sie durch die Bundesgutschrift ausgeglichen wurde. Moretti und Wilson (2023b) betonen daher, dass die Estate Tax vor 2001 keinen Einfluss auf die Wohnortwahl der Ultra-Reichen haben sollte.
+
+Für die Parallel-Trends-Assumption heißt das: Vor 2001 sollte die Forbes-400-Population in beiden Gruppen nicht systematisch aufgrund der Estate Tax auseinanderlaufen.
+
+#### 1. Daten vorbereiten
+
+Bevor wir die Parallel-Trends-Assumption überprüfen, teilen wir die Bundesstaaten anhand ihres Estate-Tax-Status im Jahr 2001 in zwei Gruppen ein. Anschließend berechnen wir für jedes Jahr die durchschnittliche Anzahl der Forbes-400-Personen pro Bundesstaat innerhalb der jeweiligen Gruppe.
+
+**Aufgabe**: Lade den Datensatz `State_Year.rds` und bereite die Daten für die Grafik vor. Der vorbereitete Code identifiziert zunächst die Estate-Tax-Staaten von 2001, ordnet die Bundesstaaten den beiden Gruppen zu und berechnet anschließend die jährlichen Durchschnittswerte. Führe den Code aus.
+
+
+```{r "3_0_1"}
+#< task
+stateyear <- readRDS("State_Year.rds")
+
+parallel_trends_data <- stateyear %>%
+  group_by(abbr) %>%
+  mutate(EI_2001 = EI[year == 2001]) %>%
+  ungroup() %>%
+  filter(year != 2002) %>%
+  mutate(group = ifelse(EI_2001 == 1,
+                        "Estate-Tax-Staaten",
+                        "Non-Estate-Tax-Staaten")) %>%
+  group_by(group, year) %>%
+  summarise(avg_forbes = mean(stock, na.rm = TRUE),
+            .groups = "drop")
+#>
+```
+
+#### 2. Parallel-Trends-Grafik
+
+Mit den vorbereiteten Daten können wir nun die Entwicklung über die Zeit vergleichen. Besonders interessant ist dabei der Zeitraum vor 2001. Wenn sich die Forbes-400-Population in beiden Gruppen vor der Reform ähnlich entwickelt hat, spricht dies für die Plausibilität der Parallel-Trends-Assumption.
+
+**Aufgabe**: Erstelle mit `ggplot()` eine Grafik, die die durchschnittliche Forbes-400-Population beider Gruppen über die Zeit zeigt. Die gestrichelte Linie markiert das Reformjahr 2001. Fülle den Platzhalter.
+
+```{r "3_0_2"}
+#< fill_in
+# Grafik: durchschnittliche Forbes-400-Population pro Staat
+___(parallel_trends_data,
+       aes(x = year, y = avg_forbes, color = group)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 1.5) +
+  geom_vline(xintercept = 2001, linetype = "dashed") +
+  labs(
+    title = "Trends der Forbes-400-Population",
+    x = "Jahr",
+    y = "Durchschnittliche Forbes-400-Population pro Staat",
+    color = "Gruppe"
+  ) +
+  theme_minimal()
+#>
+ggplot(parallel_trends_data,
+       aes(x = year, y = avg_forbes, color = group)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 1.5) +
+  geom_vline(xintercept = 2001, linetype = "dashed") +
+  labs(
+    title = "Trends der Forbes-400-Population",
+    x = "Jahr",
+    y = "Durchschnittliche Forbes-400-Population pro Staat",
+    color = "Gruppe"
+  ) +
+  theme_minimal()
+```
+
+Wir sehen, dass sich vor 2001 die durchschnittlichen Forbes-400-Populationen der beiden Gruppen über weite Strecken ähnlich entwickeln. Es ist insbesondere kein deutliches, dauerhaftes Auseinanderlaufen der Trends vor der Reform zu erkennen. Damit liefert die Grafik zunächst keinen offensichtlichen Hinweis auf eine Verletzung der Parallel-Trends-Assumption.
+
+Nach 2001 verändert sich das Muster. Die durchschnittliche Zahl der Forbes-400-Personen in den Estate-Tax-Staaten entwickelt sich schwächer als in den Non-Estate-Tax-Staaten. Diesen Unterschied wollen wir im nächsten Schritt mit dem Difference-in-Differences-Ansatz genauer untersuchen.
+
+Die ähnlichen Entwicklungen vor 2001 und der institutionelle Hintergrund der Reform sprechen dafür, dass die Unterschiede nach 2001 mit der neu entstandenen steuerlichen Bedeutung der Estate Tax zusammenhängen. Dadurch könnte es für die Forbes 400 attraktiver geworden sein, in einen Bundesstaat ohne Estate Tax zu ziehen. Damit erscheint die Parallel-Trends-Assumption für die folgende DiD-Analyse plausibel.
+
+## Exercise 3.1 -- Differenz-in-Differenz-Schätzungen
+
+Nachdem wir im vorigen Kapitel gesehen haben, dass die Parallel-Trends-Assumption hinreichend plausibel ist, schätzen wir nun den Effekt der Estate Tax mithilfe der Difference-in-Differences-Methode. Dabei wollen wir herausfinden, ob sich die Zahl der Forbes-400-Personen in Estate-Tax-Staaten nach der Reform von 2001 anders entwickelt hat als in Staaten ohne Estate Tax.
+
+Die DiD-Methode vergleicht dafür zwei Unterschiede miteinander. Zum einen betrachten wir die Entwicklung vor und nach der Reform, zum anderen vergleichen wir Estate-Tax-Staaten mit Staaten ohne Estate Tax. Entscheidend ist somit nicht das allgemeine Niveau der Forbes-400-Population in einem Staat, sondern die unterschiedliche Entwicklung zwischen den beiden Gruppen (vgl. Angrist & Pischke, 2009; Wooldridge, 2010).
+
+Der zentrale Koeffizient unserer Regression gehört zur Interaktion `EIxPost`. Sie entsteht durch die Multiplikation des Estate-Tax-Indikators `EI` mit dem Indikator `post` für die Zeit nach 2001:
+
+$$
+EIxPost = EI \times post
+$$
+
+Der Koeffizient von `EIxPost` gibt an, wie stark sich die Zahl der Forbes-400-Personen in Estate-Tax-Staaten relativ zu Staaten ohne Estate Tax nach der Reform verändert hat. Ein negativer Koeffizient bedeutet, dass die Zahl in Estate-Tax-Staaten stärker gesunken oder weniger stark gestiegen ist.
+
+Ein solches Ergebnis erwarten wir, da der Wohnsitzstaat vor der Reform für die gesamte Erbschaftsteuerbelastung kaum eine Rolle spielte, sich dies nach 2001 jedoch änderte.
+
+#< info "Feste Effekte"
+**Feste Effekte** helfen uns dabei, Unterschiede zwischen Bundesstaaten zu berücksichtigen, die sich über die Zeit nicht verändern. Beispielsweise können sich Bundesstaaten dauerhaft in ihrer geografischen Lage oder anderen Eigenschaften unterscheiden.
+
+Wir unterscheiden dabei zwei Arten:
+
+- **State-Fixed-Effects:** Berücksichtigen feste Unterschiede zwischen den Bundesstaaten.
+- **Year-Fixed-Effects:** Berücksichtigen Veränderungen, die alle Bundesstaaten in einem bestimmten Jahr betreffen, beispielsweise eine landesweite Wirtschaftskrise.
+
+Durch die Verwendung von Fixed Effects können wir solche Einflüsse berücksichtigen und den Effekt der Estate Tax genauer untersuchen.
+
+(vgl. Angrist & Pischke, 2009; Wooldridge, 2010)
+#>
+
+**Aufgabe**: Zuerst laden wir den Datensatz `State_Year.rds` und schließen das Jahr 2002 aus, da für dieses Jahr keine Angaben zum Wohnsitz der Forbes-400-Personen vorliegen. Anschließend erstellen wir mit `post` eine Variable, die angibt, ob eine Beobachtung nach 2001 liegt (`1`) oder nicht (`0`). Mit `EIxPost` bilden wir die Interaktion zwischen `EI` und `post`, deren Koeffizient später unseren zentralen DiD-Effekt misst. Führe den vorgegebenen Code aus.
+
+```{r "3_1_0"}
+#< task
+stateyear <- readRDS("State_Year.rds") %>%
+  filter(year != 2002)%>%
+  mutate(
+    post = as.integer(year > 2001),
+    EIxPost = EI * post
+  )
+#>
+```
+
+### Basismodell
+
+Im ersten Schritt schätzen wir das grundlegende DiD-Modell. Als abhängige Variable verwenden wir `stock`, also die Anzahl der Forbes-400-Personen, die in einem bestimmten Staat und Jahr leben.
+
+Neben `EIxPost` und `EI` berücksichtigen wir in der Regression auch State-Fixed-Effects und Year-Fixed-Effects, um Unterschiede zwischen den Bundesstaaten sowie gemeinsame zeitliche Entwicklungen zu kontrollieren.
+
+#< quiz "Fixed Effects"
+question: Welche Einflüsse werden durch State-Fixed-Effects herausgerechnet?
+mc:
+    - Die geografische Lage eines Staates*
+    - Dauerhaft unterschiedliches Klima zwischen den Staaten*
+    - Ein Börsenboom, der in einem Jahr alle Staaten betrifft
+    - Eine Steueränderung in einem Staat im Jahr 2010
+success: Richtig! Gemeinsame Jahresschocks fangen die Year Fixed Effects auf.
+failure: Nicht alle Antworten sind korrekt.
+#>
+
+Damit basiert die Schätzung vor allem auf Veränderungen innerhalb der Bundesstaaten über die Zeit und darauf, ob sich diese Veränderungen nach 2001 zwischen Estate-Tax-Staaten und Staaten ohne Estate Tax unterscheiden.
+
+#< info "feols() und lineare Regression"
+Mit der Funktion `feols()` aus dem Paket `fixest` können wir lineare Regressionen schätzen. Eine Regression hilft uns dabei, den Zusammenhang zwischen einer abhängigen Variable und einer oder mehreren erklärenden Variablen zu untersuchen.
+
+Die allgemeine Struktur lautet:
+
+`feols(abhängige Variable ~ erklärende Variablen | Fixed Effects, data = Datensatz) `
+
+Dabei haben die einzelnen Bestandteile folgende Bedeutung:
+
+- **Abhängige Variable:** Die Variable, die wir erklären oder untersuchen möchten, beispielsweise die Anzahl der Forbes-400-Personen (`stock`).
+- **Erklärende Variablen:** Variablen, deren Zusammenhang mit der abhängigen Variable wir untersuchen, beispielsweise `EIxPost` und `EI`.
+- **Fixed Effects:** Werden nach dem Zeichen `|` angegeben und berücksichtigen feste Unterschiede zwischen bestimmten Gruppen oder Zeiträumen.
+- **data:** Gibt an, welcher Datensatz für die Regression verwendet wird.
+
+Das Zeichen `~` trennt die abhängige Variable von den erklärenden Variablen. Mit `|` fügen wir die Fixed Effects hinzu.
+
+Die Regression liefert uns anschließend **Koeffizienten**, die zeigen, wie die erklärenden Variablen mit der abhängigen Variable zusammenhängen. Zusätzlich erhalten wir Standardfehler und p-Werte, mit denen wir die statistische Unsicherheit der geschätzten Zusammenhänge beurteilen können.
+#>
+
+**Aufgabe**: Wir schätzen nun mit `feols()` unser Basismodell. Dafür wollen wir die Anzahl der Forbes-400-Personen `stock` auf die Variablen `EIxPost` und `EI` regressieren. Fülle die Lücken.
+
+```{r "3_1_1"}
+#< fill_in
+m1 <- ___(
+  ___ ~ EIxPost + EI | statenum + year,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+#>
+m1 <- feols(
+  stock ~ EIxPost + EI | statenum + year,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+```
+
+Nachdem wir unser Basismodell geschätzt haben, wollen wir uns die Ergebnisse genauer anschauen. Besonders interessant ist dabei, ob der Koeffizient von `EIxPost` negativ ist und damit unserer bisherigen Erwartung entspricht. Dafür lassen wir uns die geschätzten Koeffizienten und ihre statistische Signifikanz in einer Regressionstabelle anzeigen.
+
+Mit `modelsummary()` aus dem gleichnamigen Paket können wir die Ergebnisse unserer Regression übersichtlich in einer Tabelle darstellen. Die Tabelle zeigt die geschätzten Koeffizienten, die dazugehörigen Standardfehler sowie weitere Informationen zum Modell.
+
+Die Sternchen neben den Koeffizienten kennzeichnen die statistische Signifikanz der Ergebnisse. Dabei steht ein Sternchen (`*`) für ein Signifikanzniveau von 10 %, zwei Sternchen (`**`) für 5 % und drei Sternchen (`***`) für 1 %. Grundlage dafür ist der p-Wert. Er gibt an, wie wahrscheinlich ein so deutliches Ergebnis wäre, wenn der wahre Koeffizient null wäre, also gar kein Zusammenhang bestünde. Ist diese Wahrscheinlichkeit sehr klein, lässt sich das Ergebnis kaum durch Zufall erklären, und die Nullhypothese wird verworfen. Signifikanz zeigt jedoch nur, dass ein Zusammenhang wahrscheinlich nicht zufällig ist. Ob er kausal oder wirtschaftlich bedeutsam ist, bleibt damit offen (vgl. Wooldridge, 2020).
+
+**Aufgabe**: Nun geben wir die Ergebnisse unseres Basismodells mit `modelsummary()` aus dem Paket `modelsummary` als Regressionstabelle aus. Führe dazu den vorgegebenen Code aus.
+
+```{r "3_1_2"}
+#< task
+library(modelsummary)
+
+modelsummary(
+  list("Basismodell" = m1),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+#>
+```
+
+Für unsere Fragestellung ist vor allem der Koeffizient `EIxPost` relevant. Er zeigt, wie sich die Zahl der Forbes-400-Personen in Estate-Tax-Staaten nach 2001 relativ zu Staaten ohne Estate Tax verändert hat.
+
+Der geschätzte Koeffizient ist negativ. Das bedeutet, dass Estate-Tax-Staaten nach der Reform relativ weniger Forbes-400-Personen aufweisen als die Vergleichsstaaten ohne Estate Tax. Entscheidend ist dabei das Wort relativ: Der Koeffizient sagt nicht, dass die Zahl der Forbes-400-Personen in jedem Estate-Tax-Staat zwingend absolut gefallen ist. Er zeigt vielmehr, dass sich ihre Zahl dort nach 2001 ungünstiger entwickelt hat als in Staaten ohne Estate Tax.
+
+#### Wie groß ist der Effekt?
+
+Bisher haben wir nur auf das Vorzeichen geschaut. Für die ökonomische Bedeutung ist aber vor allem die Größe des Effekts entscheidend. Da unsere abhängige Variable `stock` eine Anzahl von Personen ist, wird auch der Koeffizient von `EIxPost` in Personen gemessen. Ein Koeffizient von etwa −2,5 bedeutet: Nach 2001 lebten in einem durchschnittlichen Estate-Tax-Staat rund 2,5 Forbes-400-Personen weniger, als dort zu erwarten gewesen wären, wenn sich der Staat genauso entwickelt hätte wie die Staaten ohne Estate Tax.
+
+Ob 2,5 Personen viel oder wenig sind, lässt sich allein aus dem Koeffizienten nicht beurteilen. Für einen Staat mit 50 Forbes-400-Personen wäre das ein kleiner Verlust, für einen Staat mit nur 5 ein sehr großer. Deshalb setzen wir den Koeffizienten, wie Moretti und Wilson (2023b), ins Verhältnis zur durchschnittlichen Zahl der Forbes-400-Personen in einem Estate-Tax-Staat vor der Reform, also im Jahr 2001. Das Ergebnis ist die sogenannte Semielastizität. Sie gibt den Effekt als prozentuale Veränderung an:
+
+$$\text{Relativer Effekt} = \frac{\hat{\beta}_{EIxPost}}{\overline{stock}_{EI=1,\ 2001}} \times 100$$
+
+**Aufgabe**: Mit dem folgenden Code lesen wir den geschätzten Koeffizienten von `EIxPost` aus `m1` aus und berechnen die durchschnittliche Zahl der Forbes-400-Personen in Estate-Tax-Staaten im Jahr 2001. Ergänze bei `rel_effekt` die passenden Variablen, um den relativen Effekt in Prozent zu bestimmen.
+
+```{r "3_1_3"}
+#< fill_in
+# Geschätzter DiD-Koeffizient
+beta <- coef(m1)["EIxPost"]
+
+# Durchschnittliche Zahl der Forbes-400-Personen in Estate-Tax-Staaten im Jahr 2001
+stock_EI_2001 <- stateyear %>%
+  filter(year == 2001, EI == 1) %>%
+  summarise(mean_stock = mean(stock)) %>%
+  pull(mean_stock)
+
+# Relativer Effekt in Prozent
+rel_effekt <- ___ / ___ * 100
+
+round(beta, 2)
+round(stock_EI_2001, 2)
+round(rel_effekt, 1)
+#>
+beta <- coef(m1)["EIxPost"]
+
+stock_EI_2001 <- stateyear %>%
+  filter(year == 2001, EI == 1) %>%
+  summarise(mean_stock = mean(stock)) %>%
+  pull(mean_stock)
+
+rel_effekt <- beta / stock_EI_2001 * 100
+
+round(beta, 2)
+round(stock_EI_2001, 2)
+round(rel_effekt, 1)
+```
+
+Im Jahr 2001 lebten in einem durchschnittlichen Estate-Tax-Staat rund 7,1 Forbes-400-Personen. Ein Rückgang um rund 2,45 Personen entspricht damit einem relativen Rückgang von etwa **34,6 Prozent**. Anders gesagt: Nach der Reform von 2001 haben Estate-Tax-Staaten gut ein Drittel ihrer Forbes-400-Population verloren, verglichen mit dem Verlauf, den die Staaten ohne Estate Tax nahelegen. 
+
+Die Berechnung basiert auf dem Vorgehen von Moretti und Wilson (2023b), die in ihrer Originalanalyse eine Semielastizität von −0,346 ermitteln.
+
+
+#< quiz "Kausaler Effekt"
+question: Können wir aus unserem bisherigen DiD-Ergebnis bereits sicher schließen, dass die Estate Tax den Rückgang der Forbes-400-Personen verursacht hat?
+
+sc:
+    - Ja, da der Koeffizient negativ ist.
+    - Nein, denn auch andere Faktoren könnten die Wohnortwahl beeinflussen.*
+    - Ja, da wir die Parallel-Trends-Assumption bereits überprüft haben.
+
+success: Richtig! Ein negativer Koeffizient allein beweist noch keinen kausalen Effekt.
+failure: Leider falsch! Überlege, ob auch andere Faktoren den beobachteten Unterschied erklären könnten.
+#>
+
+Auch wenn unser bisheriges Ergebnis den erwarteten Zusammenhang zeigt, können wir noch nicht sicher sagen, ob die Erbschaftsteuer tatsächlich die Ursache ist. Möglicherweise beeinflussen auch andere Faktoren die Wohnortwahl der Superreichen.
+
+### Robustheitstest
+
+Um unsere bisherigen Ergebnisse zu überprüfen, führen wir deshalb verschiedene Robustheitstests durch. Dabei berücksichtigen wir die persönliche Einkommensteuer sowie die geografische Verteilung einkommensstarker Personen, die ebenfalls einen Einfluss auf die Wohnortwahl haben könnten. Anschließend untersuchen wir, ob sich ein ähnlicher Zusammenhang zeigt, wenn wir statt der Anzahl der Forbes-400-Personen deren gesamtes Vermögen betrachten.
+
+Damit wollen wir herausfinden, ob unser geschätzter Effekt auch unter anderen Modellannahmen bestehen bleibt und wie zuverlässig unsere bisherigen Ergebnisse sind.
+
+#< info "Kontrollvariablen" 
+**Kontrollvariablen** sind zusätzliche erklärende Variablen, die in ein Regressionsmodell aufgenommen werden, um andere Einflüsse auf die abhängige Variable zu berücksichtigen. Damit soll verhindert werden, dass der geschätzte Effekt durch ausgelassene Einflussfaktoren verzerrt wird. In unserem Fall prüfen wir, ob der Zusammenhang zwischen Erbschaftsteuer und Wohnortwahl auch dann bestehen bleibt, wenn wir weitere Faktoren berücksichtigen.
+
+(vgl. Wooldridge, 2010)
+#>
+
+#### Persönliche Einkommensteuer
+
+Zunächst betrachten wir die persönliche Einkommensteuer als möglichen weiteren Einflussfaktor auf die Wohnortwahl der Forbes 400. Neben der Estate Tax könnte auch die laufende Einkommensteuerbelastung eine Rolle bei der Entscheidung spielen, in welchem Bundesstaat sehr vermögende Personen leben.
+
+Wenn die Einkommensteuersätze in Estate-Tax-Staaten nach 2001 stärker steigen als in Staaten ohne Estate Tax, könnte ein Teil des beobachteten Rückgangs der Forbes-400-Population auch auf die persönliche Einkommensteuer zurückzuführen sein. Ohne diese zu berücksichtigen, könnten wir den Effekt der Erbschaftsteuer daher falsch einschätzen.
+
+#< quiz "Einfluss der Einkommensteuer"
+question: Angenommen, in Estate-Tax-Staaten steigen nach 2001 die Einkommensteuern, wodurch weitere Forbes-400-Personen wegziehen. Würden wir den negativen Effekt der Estate Tax über- oder unterschätzen, wenn wir die Einkommensteuer nicht berücksichtigen?
+
+sc:
+    - Wir überschätzen den negativen Effekt.*
+    - Wir unterschätzen den negativen Effekt.
+    - Der geschätzte Effekt bleibt unverändert.
+
+success: Richtig! Ein Teil des Rückgangs wäre auf die Einkommensteuer zurückzuführen, würde aber fälschlicherweise der Estate Tax zugeschrieben.
+failure: Leider falsch! Überlege, was passiert, wenn wir den Einfluss der Einkommensteuer nicht berücksichtigen.
+#>
+
+Wenn wir die Einkommensteuer nicht berücksichtigen, würden wir den negativen Effekt der Erbschaftsteuer möglicherweise überschätzen, da wir einen Teil der Abwanderung fälschlicherweise der Erbschaftsteuer zuschreiben würden.
+
+**Aufgabe**: Wir erweitern unser Modell daher um die persönliche Einkommensteuer `PIT`. Zunächst multiplizieren wir den Steuersatz mit `100`. Anschließend erstellen wir mit `PITxPost` die Interaktion zwischen der Einkommensteuer `PIT` und dem Indikator `post` für die Zeit nach 2001. Fülle die Lücken.
+
+```{r "3_1_4"}
+#< fill_in
+stateyear <- stateyear %>%
+  mutate(
+    PIT = PIT * ___,
+    PITxPost = PIT * ___
+  )
+#>
+stateyear <- stateyear %>%
+  mutate(
+    PIT = PIT * 100,
+    PITxPost = PIT * post
+  )
+```
+
+Die Variable `PIT` erfasst Unterschiede in der persönlichen Einkommensteuer zwischen den Bundesstaaten. Mit `PITxPost` erlauben wir zusätzlich, dass sich der Zusammenhang zwischen Einkommensteuer und Forbes-400-Population nach 2001 verändert. Damit können wir besser unterscheiden, ob der nach 2001 beobachtete Rückgang in Estate-Tax-Staaten tatsächlich mit der Estate Tax zusammenhängt oder möglicherweise durch Unterschiede in der laufenden Einkommensbesteuerung erklärt wird.
+
+Nun nehmen wir beide Variablen in die Regression auf und vergleichen den Koeffizienten von `EIxPost` mit dem Basismodell.
+
+**Aufgabe**: Schätze das erweiterte Modell, indem du `stock` auf `EIxPost`, `EI`, `PITxPost` und `PIT` mit `statenum`- und `year`-Fixed-Effects regressierst. Fülle dazu die Lücken und gib anschließend beide Modelle mit `modelsummary()` in einer gemeinsamen Regressionstabelle aus.
+
+```{r "3_1_5"}
+#< fill_in
+# Schätzung des erweiterten Modells
+m2 <- feols(
+  ___ ~ ___ + ___ + ___ + ___ | ___ + ___,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+
+# Ausgabe der beiden Regressionen
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Einkommensteuer" = m2
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+#>
+m2 <- feols(
+  stock ~ EIxPost + EI + PITxPost + PIT | statenum + year,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Einkommensteuer" = m2
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+```
+
+
+Der Vergleich der beiden Modelle zeigt, dass der Koeffizient von `EIxPost` auch nach Berücksichtigung der persönlichen Einkommensteuer negativ und statistisch signifikant bleibt. Da sich auch seine Größenordnung gegenüber dem Basismodell kaum verändert, spricht dies dafür, dass der Rückgang der Forbes-400-Population in Estate-Tax-Staaten nicht wesentlich durch Unterschiede in der Einkommensbesteuerung beeinflusst wird. Unser Ergebnis bleibt somit auch unter Kontrolle der persönlichen Einkommensteuer robust.
+
+#### Geografische Verteilung hoher Einkommen
+
+Als weitere Robustheitsprüfung nehmen wir die Kontrollvariable `topshr_90to97` in unser Basismodell auf. Sie misst für jeden Staat und jedes Jahr, welcher Anteil der nationalen Bevölkerung mit sehr hohen Einkommen dort lebt. Berücksichtigt werden Personen zwischen dem 90. und 97. Perzentil der nationalen Einkommensverteilung. Die Variable zeigt damit, wie stark sich einkommensstarke Personen in einem bestimmten Staat konzentrieren.
+
+Warum ist diese Kontrolle wichtig? Neben der Estate Tax können sich auch andere Eigenschaften eines Staates auf die Wohnortwahl wohlhabender Personen auswirken. Denkbar wäre zum Beispiel, dass Staaten ohne Estate Tax nach 2001 auch aus anderen Gründen attraktiver für Personen mit hohen Einkommen geworden sind. Dann könnte ein Teil des Rückgangs der Forbes-400-Population in Estate-Tax-Staaten fälschlicherweise der Estate Tax zugeschrieben werden. Mit `topshr_90to97` kontrollieren wir deshalb für solche allgemeinen Veränderungen in der geografischen Verteilung einkommensstarker Personen.
+
+**Aufgabe**: Wir erstellen die Kontrollvariable `topshr_90to97`. Dafür berechnen wir zunächst für jedes Jahr `year` die Gesamtzahl der Personen zwischen dem 90. und 97. Einkommensperzentil über alle Bundesstaaten hinweg und speichern diese als `pop_90to97_total`. Anschließend bestimmen wir, welchen prozentualen Anteil jeder Bundesstaat an dieser Gesamtzahl hat. Ergänze die fehlende Variable.
+
+```{r "3_1_6"}
+#< fill_in
+stateyear <- stateyear %>%
+  group_by(___) %>%
+  mutate(
+    pop_90to97_total = sum(pop_90to97),
+    topshr_90to97 = (pop_90to97 / pop_90to97_total) * 100
+  ) %>%
+  ungroup()
+#>
+stateyear <- stateyear %>%
+  group_by(year) %>%
+  mutate(
+    pop_90to97_total = sum(pop_90to97),
+    topshr_90to97 = (pop_90to97 / pop_90to97_total) * 100
+  ) %>%
+  ungroup()
+```
+
+
+Jetzt erweitern wir unser bisheriges Modell um die Kontrollvariable `topshr_90to97`. Anschließend vergleichen wir die Ergebnisse mit unseren bisherigen Schätzungen.
+
+**Aufgabe**: Regressiere `stock` auf `EIxPost`, `EI` und die Kontrollvariable `topshr_90to97`. Verwende dabei erneut fixe Effekte für `statenum` und `year`. Ergänze die fehlende Variable und gib anschließend alle drei Modelle mit `modelsummary()` in einer gemeinsamen Regressionstabelle aus.
+
+```{r "3_1_7"}
+#< fill_in
+m3 <- feols(
+  stock ~ EIxPost + EI + ___ | statenum + year,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Einkommensteuer" = m2,
+    "Hohe Einkommen" = m3
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+#>
+m3 <- feols(
+  stock ~ EIxPost + EI + topshr_90to97 | statenum + year,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Einkommensteuer" = m2,
+    "Hohe Einkommen" = m3
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+```
+
+Anhand der Regressionstabelle können wir nun überprüfen, ob unser Ergebnis auch mit den zusätzlichen Kontrollvariablen bestehen bleibt.
+
+#< quiz "Robustheit der Schätzung"
+question: Wenn unsere Schätzung robust ist, wie sollte sich der geschätzte Effekt von `EIxPost` durch die zusätzliche Kontrollvariable verändern?
+
+sc:
+    - Der Koeffizient sollte deutlich positiver werden.
+    - Der Koeffizient sollte weiterhin negativ und ähnlich groß bleiben.*
+    - Der Koeffizient sollte deutlich negativer werden.
+
+success: Richtig! Wenn der Koeffizient weiterhin negativ und ähnlich groß bleibt, spricht das für die Robustheit unseres Ergebnisses.
+failure: Leider falsch! Überlege nochmal... 
+#>
+
+Durch die Aufnahme der Kontrollvariable `topshr_90to97` verändert sich der Koeffizient von `EIxPost` nur geringfügig. Er bleibt negativ und statistisch signifikant und fällt lediglich etwas weniger negativ aus als zuvor.
+
+Dass der Punktschätzer dabei betragsmäßig etwas kleiner liegt, lässt sich folgendermaßen deuten: Ein Teil des ursprünglich geschätzten Rückgangs könnte mit Veränderungen in der geografischen Verteilung einkommensstarker Personen zusammenhängen. Beispielsweise könnten Staaten ohne Estate Tax nach 2001 auch unabhängig von der Erbschaftsteuer für einkommensstarke Personen attraktiver geworden sein. Berücksichtigen wir diese Veränderungen mit `topshr_90to97`, fällt der geschätzte Estate-Tax-Effekt geringfügig kleiner aus. Da die Änderung jedoch sehr klein im Vergleich zum Standardfehler ist, ändert sie nichts an der Gesamtaussage. Der negative Zusammenhang zwischen Estate Tax und Forbes-400-Population nach 2001 bleibt auch dann bestehen, wenn wir Veränderungen im Anteil einkommensstarker Personen zwischen den Bundesstaaten berücksichtigen. Das Ergebnis erweist sich somit als robust.
+
+### Vermögen als alternative abhängige Variable
+
+Bisher haben wir untersucht, wie sich die Anzahl der Forbes-400-Personen in einem Bundesstaat verändert. Als Nächstes betrachten wir zusätzlich ihr Vermögen. Dadurch können wir prüfen, ob sich die Estate Tax nicht nur auf die Zahl der Superreichen, sondern auch auf die damit verbundene Vermögensbasis eines Staates auswirkt. Dafür ersetzen wir die bisherige abhängige Variable `stock` durch `wealth_normalized`.
+
+**Aufgabe**: Zuerst berechnen wir für jedes Jahr das gesamte beobachtete Forbes-400-Vermögen über alle Bundesstaaten. Anschließend normieren wir das Vermögen der einzelnen Staaten auf das Niveau von 2017. Dadurch wird verhindert, dass der starke allgemeine Anstieg des Forbes-400-Vermögens über die Zeit unseren Vergleich bestimmt. Mit `wealth_normalized` erhalten wir somit eine Vermögensgröße, die zwischen den Jahren besser vergleichbar ist. Einfach den Code ausführen.
+
+```{r "3_1_8"}
+#< task
+stateyear <- stateyear %>%
+  group_by(year) %>%
+  mutate(
+    total_wealth = sum(wealth)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    wealth_normalized = wealth * first(total_wealth[year == 2017]) / total_wealth
+  )
+#>
+```
+
+Nachdem wir das Forbes-400-Vermögen mit `wealth_normalized` für die verschiedenen Jahre vergleichbar gemacht haben, können wir nun unser DiD-Basismodell erneut schätzen. Dabei interessiert uns besonders, ob der Koeffizient von `EIxPost` auch beim Vermögen negativ ist.
+
+**Aufgabe**: Schätze unser DiD-Basismodell erneut, diesmal mit `wealth_normalized` statt `stock` als abhängiger Variable. Befülle den Platzhalter und lasse dir anschließend alle vier Modelle mit `modelsummary()` in einer gemeinsamen Regressionstabelle anzeigen.
+
+```{r "3_1_9"}
+#< fill_in
+m4 <- feols(
+  ___ ~ EIxPost + EI | statenum + year,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Einkommensteuer" = m2,
+    "Hohe Einkommen" = m3,
+    "Vermögen" = m4
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+#>
+m4 <- feols(
+  wealth_normalized ~ EIxPost + EI | statenum + year,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Einkommensteuer" = m2,
+    "Hohe Einkommen" = m3,
+    "Vermögen" = m4
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+```
+
+#< award "DiD Expert"
+Ausgezeichnet! Du hast die Difference-in-Differences-Methode angewendet und mithilfe verschiedener Modellspezifikationen die Robustheit deiner Ergebnisse überprüft.
+#>
+
+#< quiz "Vermögen"
+question: Wie interpretieren wir den Koeffizienten von `-15` in der Spalte „Vermögen“?
+
+sc:
+- Rund 15 Milliarden US-Dollar weniger Forbes-400-Vermögen pro Estate-Tax-Staat.*
+- Rund 15 Forbes-400-Personen weniger pro Estate-Tax-Staat.
+- Rund 15 Milliarden US-Dollar weniger Vermögen pro Forbes-400-Person.
+
+success: Richtig! Der Koeffizient zeigt, dass das normalisierte Forbes-400-Vermögen in Estate-Tax-Staaten nach 2001 im Vergleich zu Staaten ohne Estate Tax um rund 15 Milliarden US-Dollar pro Bundesstaat geringer ausfällt.
+failure: Leider falsch!
+#>
+
+Die gemeinsame Tabelle macht besonders gut sichtbar, dass der Koeffizient von `EIxPost` in allen gezeigten Modellen negativ bleibt. Die letzte Spalte betrachtet jedoch nicht mehr die Anzahl der Milliardäre, sondern ihr gesamtes normalisiertes Vermögen auf Bundesstaatsebene. Ein Koeffizient von etwa −15 bedeutet, dass Estate-Tax-Staaten nach 2001 im Durchschnitt rund 15 Milliarden Dollar weniger Forbes-400-Vermögen aufweisen als aufgrund der Entwicklung in Staaten ohne Estate Tax zu erwarten wäre. Es geht also nicht darum, dass das Vermögen jedes einzelnen Milliardärs um 15 Milliarden Dollar sinkt. Vielmehr zeigt der Koeffizient einen Rückgang des gesamten in einem Bundesstaat angesiedelten Forbes-400-Vermögens.
+
+Das Ergebnis ergänzt damit die vorherige Analyse zur Anzahl der Forbes-400-Personen: Nach 2001 befinden sich in Estate-Tax-Staaten relativ gesehen nicht nur weniger Mitglieder der Forbes 400, sondern auch weniger Forbes-400-Vermögen. Damit verringert sich zugleich die potenzielle Vermögensbasis, auf die eine bundesstaatliche Estate Tax grundsätzlich zugreifen könnte.
+
+Darüber hinaus könnte die Abwanderung auch weitere wirtschaftliche Folgen haben. Beispielsweise könnten einem Bundesstaat zusätzliche Einnahmen aus der Einkommensteuer oder durch den Konsum vermögender Personen entgehen. Auch lokale Investitionen könnten betroffen sein. Allerdings bedeutet ein Wohnsitzwechsel nicht automatisch, dass auch das gesamte Vermögen oder die Investitionen den Bundesstaat verlassen. Diese möglichen Auswirkungen können wir mit unserer Regression daher nicht direkt nachweisen.
+
+Die bisherigen Ergebnisse zeigen somit ein einheitliches Bild. Unabhängig davon, ob wir die Anzahl oder das Vermögen der Forbes-400-Personen betrachten und welche zusätzlichen Kontrollvariablen wir berücksichtigen, bleibt der geschätzte Effekt der Estate Tax negativ. 
+
+In allen bisherigen Modellen steckt allerdings eine Annahme, die wir noch nicht überprüft haben. Wir haben den Estate-Tax-Status `EI` als gegeben behandelt. Die Reform von 2001 wurde auf Bundesebene beschlossen und war für die einzelnen Bundesstaaten von außen vorgegeben. Danach konnten die Staaten aber selbst entscheiden, ob sie ihre Estate Tax beibehalten, abschaffen oder neu einführen, und einige haben das auch getan. Der Estate-Tax-Status nach 2001 ist damit auch das Ergebnis politischer Entscheidungen (vgl. Conway & Rork, 2004). Hängen diese Entscheidungen mit Faktoren zusammen, die gleichzeitig die Wohnortwahl der Superreichen beeinflussen, könnte der Estate-Tax-Status endogen sein und unsere bisherigen Schätzungen verzerren. Im nächsten Kapitel untersuchen wir deshalb mithilfe eines Instrumentalvariablen-Ansatzes, ob unsere Ergebnisse auch unter Berücksichtigung dieser möglichen Endogenität bestehen bleiben.
+
+## Exercise 3.2 -- Instrumentalvariablen-Ansatz
+
+### Confounder, Endogenität und der Instrumentalvariablen-Ansatz
+
+In den Robustheitstests haben wir untersucht, ob beobachtbare Faktoren unsere Ergebnisse erklären können. Das war nicht der Fall. Der Effekt der Estate Tax blieb in allen Spezifikationen erhalten. Kontrollvariablen helfen allerdings nur bei Faktoren, die wir messen können. Gegen unbeobachtete Faktoren, die sich über die Zeit verändern und gleichzeitig mit dem Estate-Tax-Status zusammenhängen, helfen sie nicht.
+
+Ein Beispiel verdeutlicht das: Ein Bundesstaat wird durch eine positive wirtschaftliche Entwicklung attraktiver für Milliardäre. Gleichzeitig beschließt die Politik, die Estate Tax abzuschaffen. Ziehen anschließend mehr Forbes-400-Personen in diesen Staat, ließe sich nicht eindeutig sagen, ob dies an der abgeschafften Steuer oder an der gestiegenen Attraktivität liegt. Eine solche „Attraktivität“ ist kaum direkt messbar und kann daher auch nicht als Kontrollvariable aufgenommen werden.
+
+Hängt der Estate-Tax-Status mit solchen unbeobachteten Faktoren zusammen, spricht man von **Endogenität**. Der Instrumentalvariablen-Ansatz bietet eine Möglichkeit, genau diesen Punkt zu überprüfen. Statt des tatsächlichen Estate-Tax-Status nutzen wir dafür nur den Status, den ein Staat zum Zeitpunkt der Reform im Jahr 2001 hatte. Dieser kann nicht von Entwicklungen nach 2001 beeinflusst sein. Liefert dieser Ansatz ähnliche Ergebnisse wie unsere bisherigen Schätzungen, spricht das zusätzlich dafür, dass wir tatsächlich den Effekt der Estate Tax messen (vgl. Wooldridge, 2010).
+
+#< info "Confounder (Störvariablen)" 
+Ein **Confounder** ist eine Variable, die **gleichzeitig** die erklärende Variable und die Zielvariable beeinflusst. Wird dieser Faktor im Modell nicht berücksichtigt, kann sein Einfluss fälschlicherweise der erklärenden Variable zugeschrieben werden. Der geschätzte Zusammenhang ließe sich dann nicht mehr eindeutig als kausaler Effekt interpretieren.
+
+Im obigen Beispiel wäre die unbeobachtete Attraktivität eines Staates ein solcher Confounder: Sie könnte sowohl die Entscheidung über die Estate Tax als auch die Zahl der dort lebenden Forbes-400-Personen beeinflussen.
+
+(vgl. Angrist & Pischke, 2009; Wooldridge, 2010)
+#>
+
+```{r "3_2_0", optional = TRUE}
+#< task
+# Diagramm 1: Confounder-Problem
+grViz('digraph G {
+  rankdir=LR
+  node [fontname="Helvetica", shape=box, style=rounded]
+
+  u  [label="Unbeobachtete Attraktivität\n(u)",
+      style="filled,rounded", fillcolor="#FAEEDA"]
+  ei [label="Estate Tax \n(EI)"]
+  y  [label="Anzahl Forbes-400\n(stock)"]
+
+  u  -> ei [label="?"]
+  u  -> y  [label="+"]
+  ei -> y  [label="? gesuchter Effekt", color="#185FA5", fontcolor="#185FA5"]
+}')
+#>
+```
+
+Das Diagramm veranschaulicht das mögliche Problem. Verändert sich die Attraktivität eines Bundesstaates (`u`), könnte das sowohl seinen Estate-Tax-Status (`EI`) als auch die Anzahl der dort lebenden Forbes-400-Personen (`stock`) beeinflussen. Dabei nehmen wir an, dass eine höhere Attraktivität mehr Forbes-400-Personen anzieht (`+`). Wie sich die Attraktivität auf den Estate-Tax-Status auswirkt, ist dagegen unklar. Ein Staat könnte seine Estate Tax abschaffen, um noch attraktiver zu werden, oder sie gerade deshalb beibehalten, weil er auch ohne Steuervorteile genügend Vermögende anzieht.
+
+Formal bedeutet das, dass `EI` mit dem Fehlerterm unserer Regression korreliert sein könnte. Die Variable wäre dann **endogen**. Unsere Fixed Effects fangen zwar alle Unterschiede zwischen den Staaten ab, die über die Zeit konstant sind. Verändert sich die Attraktivität eines Staates jedoch im Zeitverlauf, hilft das nicht weiter. Ob dieser Fall unsere Ergebnisse beeinflusst, prüfen wir im Folgenden mit einem Instrumentalvariablen-Ansatz.
+
+### Die Instrumentalvariable
+
+Eine Instrumentalvariable ist eine Variable, die mit der endogenen erklärenden Variable zusammenhängt, die abhängige Variable aber nur über diese beeinflusst. In unserem Fall suchen wir also eine Variable, die eng mit dem Estate-Tax-Status verknüpft ist, aber keinen eigenen Einfluss auf die Wohnortwahl der Forbes 400 hat (vgl. Angrist & Pischke, 2009; Imbens, 2014).
+
+In unserem Modell gibt es zwei endogene Variablen: den Estate-Tax-Status `EI` und die daraus gebildete Interaktion `EIxPost`. Für jede endogene Variable benötigen wir mindestens ein Instrument (vgl. Wooldridge, 2010). 
+
+Wir verwenden deshalb zwei Instrumente, die entsprechend den endogenen Variablen aufgebaut sind:
+
+- `EI` wird durch `EI2001` instrumentiert.
+- `EIxPost` wird durch `EI2001xPost` instrumentiert.
+
+`EI2001` nimmt für Staaten, die im Jahr 2001 eine Estate Tax hatten, ab 2001 den Wert 1 an, sonst 0. Ob ein Staat seine Estate Tax später abschafft oder neu einführt, spielt für das Instrument also keine Rolle. Die Interaktion `EI2001xPost` bilden wir wie zuvor `EIxPost`, indem wir `EI2001` mit `post` multiplizieren.
+
+```{r "3_2_1", optional = TRUE}
+#< task
+# Diagramm 2: Instrumentalvariablen als Lösung
+grViz('digraph G {
+  rankdir=LR
+  node [fontname="Helvetica", shape=box, style=rounded]
+ 
+  z  [label="Instrumente:\nEstate Tax 2001\n(EI2001, EI2001xPost)",
+      style="filled,rounded", fillcolor="#EEEDFE"]
+  u  [label="Unbeobachtete\nAttraktivität (u)",
+      style="dashed,rounded"]
+  ei [label="Estate Tax\n(EI, EIxPost)"]
+  y  [label="Anzahl Forbes-400\n(stock)"]
+ 
+  z  -> ei [label="Relevanz", color="#0F6E56", fontcolor="#0F6E56"]
+  u  -> ei
+  u  -> y
+  ei -> y  [label="kausaler Effekt", color="#185FA5", fontcolor="#185FA5"]
+}')
+#>
+```
+
+Das Diagramm zeigt die Idee der Instrumente. Die unbeobachtete Attraktivität `u` kann weiterhin sowohl den Estate-Tax-Status `EI` und `EIxPost` als auch die Anzahl der Forbes-400-Personen `stock` beeinflussen. Neu sind die Instrumente `EI2001` und `EI2001xPost`, die mit dem Estate-Tax-Status zusammenhängen.
+
+#### Two-Stage Least Squares
+
+Die IV-Schätzung erfolgt mit einem Verfahren namens **Two-Stage Least Squares (2SLS)**, also in zwei Stufen (vgl. Angrist & Pischke, 2009; Wooldridge, 2010):
+
+**1. Stufe – Vorhersage des Steuerstatus:** Für jede der beiden endogenen Variablen `EI` und `EIxPost` schätzen wir eine eigene Regression. Als erklärende Variablen verwenden wir jeweils beide Instrumente `EI2001` und `EI2001xPost` sowie dieselben Fixed Effects wie im Basismodell. Aus diesen Regressionen erhalten wir für jeden Staat und jedes Jahr **vorhergesagte** Werte für `EI` und `EIxPost`.
+
+**2. Stufe – Schätzung des Effekts:** Wir schätzen unsere bekannte Regression für `stock`. Statt des tatsächlichen Estate-Tax-Status verwenden wir nun aber die vorhergesagten Werte aus der ersten Stufe.
+
+Warum hilft das? Der vorhergesagte Steuerstatus beruht ausschließlich auf der Information von 2001. Angenommen, ein Staat hatte 2001 eine Estate Tax und schafft sie einige Jahre später ab, weil er wirtschaftlich attraktiver geworden ist. Diese spätere Entscheidung steckt im tatsächlichen Steuerstatus, nicht aber in der Vorhersage. Der Teil des Steuerstatus, der mit der Attraktivität `u` zusammenhängen könnte, wird also herausgefiltert. Übrig bleibt nur der Teil, der bereits vor den späteren Entscheidungen feststand.
+
+#< info "2SLS mit feols()"
+Die beiden Stufen müssen wir nicht selbst nacheinander schätzen. `feols()` führt eine 2SLS-Schätzung durch, sobald wir in der Formel nach einem weiteren `|` angeben, welche Variablen endogen sind und durch welche Instrumente sie ersetzt werden:
+ 
+`feols(abhängige Variable ~ exogene Variablen | Fixed Effects | endogene Variablen ~ Instrumente, data = Datensatz)`
+ 
+`feols()` schätzt dann intern beide Stufen und gibt die Ergebnisse der zweiten Stufe aus. Die Koeffizienten der endogenen Variablen erhalten dabei das Präfix `fit_`, zum Beispiel `fit_EIxPost`. Daran erkennt man, dass hier die vorhergesagten Werte aus der ersten Stufe verwendet werden. Die erste Stufe lässt sich mit `summary(IV, stage = 1)` anzeigen.
+#>
+
+#### Bedingungen für ein gültiges Instrument
+
+Ein gültiges Instrument muss zwei wichtige Bedingungen erfüllen (vgl. Angrist et al., 1996; Imbens, 2014):
+
+- **Relevanz:** Das Instrument muss einen ausreichend starken Zusammenhang mit der endogenen Variable haben.
+  
+  In unserem Fall bedeutet das, dass der Estate-Tax-Status von 2001 den späteren Steuerstatus gut vorhersagen muss. Staaten, die 2001 eine Estate Tax hatten, sollten diese also auch nach der Reform häufiger erheben als Staaten ohne Estate Tax. Diese Bedingung lässt sich anhand der ersten Stufe überprüfen. Der Koeffizient des Instruments sollte dort deutlich positiv und statistisch signifikant sein. Moretti und Wilson (2023b) deuten darauf hin, dass der Estate-Tax-Status der Staaten über die Zeit sehr beständig ist.
+
+- **Exklusionsrestriktion:** Das Instrument darf die abhängige Variable nur über die endogene Variable beeinflussen.
+  
+  Der Estate-Tax-Status von 2001 darf die spätere Wohnortwahl der Forbes 400 also nur dadurch beeinflussen, dass er mit dem späteren Steuerstatus zusammenhängt. Zudem darf er nicht mit der unbeobachteten Attraktivität zusammenhängen. Anders als die Relevanz lässt sich diese Annahme nicht statistisch überprüfen (vgl. Imbens, 2014). Für ihre Plausibilität spricht, dass der Status von 2001 zu einer Zeit festgelegt wurde, in der er für die gesamte Steuerbelastung der Milliardäre noch keine Rolle spielte. Zudem kam die Reform von 2001 weitgehend unerwartet (vgl. Moretti & Wilson, 2023b). Die Staaten können ihren Status von 2001 also kaum mit Blick auf die Wohnortwahl der Superreichen nach der Reform gewählt haben. Verletzt wäre die Annahme dagegen, wenn sich Staaten mit und ohne Estate Tax im Jahr 2001 nach der Reform aus anderen Gründen unterschiedlich entwickelt hätten. 
+
+Wir laden den Datensatz erneut und bereiten die benötigten Variablen vor.
+
+**Aufgabe**: Lade den Datensatz `State_Year.rds` erneut und erstelle wie zuvor die Variablen `post` und `EIxPost`. Das Jahr 2002 schließen wir weiterhin aus unserer Analyse aus.
+
+```{r "3_2_2"}
+#< task_notest
+stateyear <- readRDS("State_Year.rds") %>%
+  filter(year != 2002) %>%
+  mutate(
+    post = as.integer(year > 2001),
+    EIxPost = EI * post
+  )
+#>
+```
+
+Wir erstellen nun unsere beiden Instrumentalvariablen und verwenden sie anschließend direkt für die IV-Regression.
+
+**Aufgabe**: Bestimme zunächst, welche Bundesstaaten (`abbr`) im Jahr 2001 eine Estate Tax hatten. Erstelle daraus die Instrumentalvariable `EI2001` und ihre Interaktion mit `post`. Anschließend schätzen wir das IV-Modell, wobei `EI` und `EIxPost` durch `EI2001` und `EI2001xPost` instrumentiert werden. Ergänze die fehlenden Variablen und führe den Code aus.
+
+**Hinweis**: Die Syntax für die IV-Schätzung: `feols(... | Fixed Effects | endogene Variablen ~ Instrumente)`
+
+```{r "3_2_3"}
+#< fill_in
+stateyear <- stateyear %>%
+  group_by(abbr) %>%
+  mutate(
+    EI2001 = as.integer(year >= 2001 & any(year == 2001 & EI == 1)),
+    EI2001xPost = ___ * ___
+  ) %>%
+  ungroup()
+
+IV <- feols(
+  stock ~ 1 | statenum + year | EI + EIxPost ~ ___ + EI2001xPost,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+#>
+stateyear <- stateyear %>%
+  group_by(abbr) %>%
+  mutate(
+    EI2001 = as.integer(year >= 2001 & any(year == 2001 & EI == 1)),
+    EI2001xPost = EI2001 * post
+  ) %>%
+  ungroup()
+
+IV <- feols(
+  stock ~ 1 | statenum + year | EI + EIxPost ~ EI2001 + EI2001xPost,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+```
+
+Nachdem wir unser IV-Modell geschätzt haben, wollen wir uns nun die Ergebnisse anschauen und mit unserem bisherigen DiD-Basismodell vergleichen. Besonders wichtig ist dabei der Koeffizient von `EIxPost`, der den geschätzten Effekt der Estate Tax nach der Reform von 2001 beschreibt.
+
+Wenn der Koeffizient auch in der IV-Schätzung negativ und ähnlich groß bleibt, spricht das dafür, dass unsere bisherigen Ergebnisse nicht wesentlich durch spätere, möglicherweise endogene Steuerentscheidungen verzerrt wurden. Unterscheiden sich die Koeffizienten dagegen deutlich, könnte dies ein Hinweis auf ein Endogenitätsproblem sein.
+
+**Aufgabe**: Schätze das DiD-Basismodell erneut und gib die Ergebnisse gemeinsam mit der IV-Schätzung über `modelsummary()` in einer Regressionstabelle aus. Vergleiche dabei insbesondere das Vorzeichen und die Größe des Koeffizienten von `EIxPost`. Einfach auf `check` klicken.
+
+```{r "3_2_4"}
+#< task
+# Basismodell erneut schätzen
+m1 <- feols(
+  stock ~ EIxPost + EI | statenum + year,
+  data = stateyear,
+  panel.id = ~ statenum + year,
+  vcov = "DK"
+)
+
+# Basismodell und IV-Schätzung vergleichen
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Instrumentalvariable" = IV
+  ),
+  coef_rename = c(
+    "fit_EIxPost" = "EIxPost",
+    "fit_EI" = "EI"
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+#>
+```
+
+#< award "IV-Master" 
+Sehr gut! Du hast das Kapitel zu Instrumentalvariablen erfolgreich abgeschlossen. Du weißt nun, wie Instrumentalvariablen zur Lösung von Endogenitätsproblemen eingesetzt und entsprechende IV-Schätzungen in R durchgeführt werden können. 
+#>
+
+Auch in der IV-Schätzung bleibt der Koeffizient für `EIxPost` deutlich negativ. Mit −3,061 ist der geschätzte Effekt betragsmäßig etwas größer als im Basismodell. Bezogen auf die rund 7,1 Forbes-400-Personen eines durchschnittlichen Estate-Tax-Staats im Jahr 2001 entspricht das einem relativen Rückgang von etwa 43,2 Prozent statt 34,6 Prozent im Basismodell. Gleichzeitig ist die IV-Schätzung weniger präzise, was sich am größeren Standardfehler erkennen lässt. 
+
+Inhaltlich ergibt sich damit dasselbe Bild wie zuvor. Nach 2001 sinkt die Zahl der Forbes-400-Personen in Estate-Tax-Staaten relativ zu Staaten ohne Estate Tax. Ob sich die IV-Schätzung statistisch vom Basismodell unterscheidet, prüfen Moretti und Wilson (2023b) mit einem Hausman-Test. Mit einem p-Wert von 0,437 lässt sich kein signifikanter Unterschied nachweisen. Die Autoren schließen daraus, dass das Ausmaß der Endogenität begrenzt sein dürfte. Das passt dazu, dass nach 2001 nur wenige Staaten ihren Estate-Tax-Status geändert haben. So schafften bis 2017 lediglich sechs Staaten ihre Estate Tax wieder ab.
+
+Auffällig ist, dass der Koeffizient für `EI` in der IV-Schätzung negativ ist, während er im Basismodell positiv war. Moretti und Wilson gehen auf diesen Vorzeichenwechsel nicht ein. Ein Grund könnte sein, dass sich die beiden Instrumente nur im Jahr 2001 unterscheiden und der Koeffizient von `EI` daher kaum mit dem aus dem Basismodell vergleichbar ist. Zum positiven Koeffizienten im Basismodell merken sie an, dass man eigentlich einen Wert von null erwarten könnte, da die Steuerlast der Milliardäre vor 2001 nicht vom Wohnort abhing (vgl. Moretti und Wilson, 2023b). Für unsere Fragestellung ist jedoch der Interaktionsterm `EIxPost` entscheidend, und dieser bleibt in beiden Modellen deutlich negativ.
+
+Damit können wir die Frage vom Anfang dieses Kapitels beantworten. Wäre unser Ergebnis vor allem durch endogene Steuerentscheidungen nach 2001 zustande gekommen, würden wir erwarten, dass sich die IV-Schätzung deutlich vom Basismodell unterscheidet. Das ist nicht der Fall. Auch wenn wir nur den Estate-Tax-Status nutzen, der bereits 2001 feststand, bleibt der geschätzte Effekt negativ und in einer ähnlichen Größenordnung. Die IV-Schätzung stützt damit die Ergebnisse aus der Difference-in-Differences-Analyse.
+
+
+## Exercise 3.3 -- Umzugswahrscheinlichkeit zwischen Staaten mit und ohne Erbschaftsteuer
+
+Die Difference-in-Differences-Schätzungen aus Kapitel 3.1 zeigen, dass die Zahl der Forbes-400-Personen in Estate-Tax-Staaten nach 2001 relativ zurückgeht. Diese Analyse basiert jedoch auf aggregierten Daten auf Staats-Jahres-Ebene. Wir beobachten also, wie sich die Anzahl der Forbes-400-Personen in den einzelnen Staaten entwickelt, können daraus aber noch nicht direkt erkennen, ob dieser Rückgang tatsächlich durch Umzüge einzelner Personen verursacht wird. Denkbar wären beispielsweise auch Veränderungen durch Sterbefälle oder neue Personen, die in die Forbes 400 aufgenommen werden.
+
+Daher wechseln wir nun die Beobachtungsebene und betrachten einzelne Personen über die Zeit. Für jeden Milliardär, der im Jahr 2001 beobachtet wird, prüfen wir, ob er in einem späteren Jahr den Steuerstatus seines Wohnsitzstaates gewechselt hat. Dadurch können wir untersuchen, ob die zuvor beobachteten Veränderungen tatsächlich mit individuellen Umzügen zwischen Estate-Tax- und Non-Estate-Tax-Staaten zusammenhängen. Zusätzlich betrachten wir Unterschiede nach Alter, da der Anreiz, einer zukünftigen Erbschaftsteuer auszuweichen, mit zunehmendem Alter an Bedeutung gewinnen dürfte.
+
+#< quiz "Warum Individualebene"
+question: Wodurch könnte ein Rückgang der Forbes 400 in Estate-Tax-Staaten neben Umzügen noch entstehen?
+mc:
+    - Sterbefälle*
+    - Neue Personen, die in die Forbes 400 aufgenommen werden*
+    - Fixed Effects
+success: Richtig! Deshalb schauen wir uns einzelne Personen an.
+failure: Nicht ganz.
+#>
+
+#< info "pivot_wider()"
+Mit der Funktion `pivot_wider()` aus dem Paket `tidyr` können wir einen Datensatz vom Long-Format ins Wide-Format umwandeln.
+
+Dazu erstellen wir einen kleinen Beispieldatensatz mit zwei Personen, deren Wohnorte wir in den Jahren 2001 und 2010 beobachten.
+
+```{r}
+beispiel <- tibble(
+  nameid = c(1, 1, 2, 2),
+  year = c(2001, 2010, 2001, 2010),
+  abbr = c("NY", "FL", "TX", "TX"),
+  EI = c(1, 0, 0, 0)
+)
+
+beispiel
+```
+
+Jede Person hat mehrere Zeilen, da ihre Angaben für jedes Jahr einzeln gespeichert werden.
+
+Nun wenden wir `pivot_wider()` an:
+
+```{r}
+beispiel_wide <- beispiel %>%
+  pivot_wider(
+    id_cols = nameid,
+    names_from = year,
+    values_from = c(abbr, EI),
+    names_glue = "{.value}{year}"
+  )
+
+beispiel_wide
+```
+
+Jetzt hat jede Person nur noch **eine Zeile**. Die Angaben aus den verschiedenen Jahren stehen nebeneinander in eigenen Spalten.
+
+Dadurch können wir beispielsweise direkt erkennen, dass **Person 1 von New York nach Florida gezogen ist**, während Person 2 weiterhin in Texas lebt.
+
+In unserem Code haben die Argumente folgende Bedeutung:
+
+- **`id_cols = nameid`**: Jede Person erhält eine eigene Zeile.
+- **`names_from = year`**: Die Jahreszahlen werden für die neuen Spaltennamen verwendet.
+- **`values_from = c(abbr, EI, Age_num)`**: Diese Variablen werden auf die neuen Spalten verteilt.
+- **`names_glue = "{.value}{year}"`**: Legt fest, wie die neuen Spalten heißen, beispielsweise `abbr2001`, `EI2010` oder `Age_num2001`.
+
+So können wir die Angaben einer Person aus verschiedenen Jahren direkt miteinander vergleichen.
+#>
+
+**Aufgabe**: Zunächst laden wir den Datensatz `"Indiv_Analysis.rds"` und bringen ihn mit `pivot_wider()` vom Long- ins Wide-Format. Dadurch erhalten wir eine Zeile pro Person (`nameid`), während der Wohnsitzstaat (`abbr`), der Estate-Tax-Status (`EI`) und das Alter (`Age_num`) für jedes Jahr in eigenen Spalten gespeichert werden. So können wir die Wohnorte und den Steuerstatus im Jahr 2001 mit späteren Jahren vergleichen. Wir behalten nur Personen, für die im Jahr 2001 ein Wohnsitzstaat beobachtet wird. Abschließend lassen wir uns die ersten sechs Zeilen ausgewählter Spalten anzeigen.
+
+```{r "3_3_1"}
+#< fill_in
+wide <- readRDS("Indiv_Analysis.rds") %>%
+  select(nameid, year, abbr, EI, Age_num) %>%
+  ___(
+    id_cols     = nameid,
+    names_from  = year,
+    values_from = c(abbr, EI, Age_num),
+    names_glue  = "{.value}{year}"
+  ) %>%
+  filter(!is.na(abbr2001))
+
+wide %>%
+  select(nameid, abbr2001, abbr2010, EI2001, EI2010, Age_num2001) %>%
+  head(6)
+#>
+wide <- readRDS("Indiv_Analysis.rds") %>%
+  select(nameid, year, abbr, EI, Age_num) %>%
+  pivot_wider(
+    id_cols     = nameid,
+    names_from  = year,
+    values_from = c(abbr, EI, Age_num),
+    names_glue  = "{.value}{year}"
+  ) %>%
+  filter(!is.na(abbr2001))
+
+wide %>%
+  select(nameid, abbr2001, abbr2010, EI2001, EI2010, Age_num2001) %>%
+  head(6)
+```
+
+Die Tabelle zeigt die Wohnorte, den Estate-Tax-Status und das Alter einzelner Forbes-400-Personen. Anhand der Spalten `abbr2001` und `abbr2010` können wir erkennen, ob eine Person zwischen 2001 und 2010 ihren Wohnsitzstaat gewechselt hat. Die Variablen `EI2001` und `EI2010` zeigen zusätzlich, ob der jeweilige Wohnsitzstaat in diesen Jahren eine Estate Tax erhoben hat. So können wir später untersuchen, ob Personen zwischen Staaten mit und ohne Estate Tax umgezogen sind.
+
+Die Funktion `move_probs` berechnet anschließend für ein bestimmtes Jahr t zwei Übergangswahrscheinlichkeiten. `fromET` misst den Anteil der Personen, die 2001 in einem Estate-Tax-Staat lebten und im Vergleichsjahr t in einem anderen Staat ohne Estate Tax wohnen. `toET` misst die umgekehrte Bewegung, also von einem Staat ohne Estate Tax in einen Estate-Tax-Staat.
+
+Dabei wird zusätzlich geprüft, ob sich der Wohnsitzstaat tatsächlich geändert hat. Ein bloßer Wechsel des Steuerstatus eines Staates wird somit nicht als persönlicher Umzug gezählt. Über `age_min` und `age_max` können wir die betrachtete Gruppe außerdem nach dem Alter im Jahr 2001 einschränken.
+
+#< info "function(...){...}" 
+Mit `function(...) { ... }` können in R eigene Funktionen definiert werden. Dabei stehen in den runden Klammern () die Eingabeparameter, und in den geschweiften Klammern {} der Code, der mit diesen Eingaben ausgeführt werden soll. 
+
+Eigene Funktionen helfen, wiederkehrende Arbeitsschritte kompakt und wiederverwendbar zu machen. 
+#>
+
+**Aufgabe**: Führe den folgenden Code aus, um die Funktion `move_probs` zu erstellen.
+
+```{r "3_3_2"}
+#< task
+move_probs <- function(df, t, age_min = -Inf, age_max = Inf) {
+
+  obs <- df %>%
+    filter(!is.na(.data[[paste0("abbr", t)]]),
+           between(Age_num2001, age_min, age_max))
+
+  ei_t   <- obs[[paste0("EI",   t)]]
+  abbr_t <- obs[[paste0("abbr", t)]]
+  moved  <- obs$abbr2001 != abbr_t
+
+  fromET <- sum(obs$EI2001 == 1 & ei_t == 0 & moved) / sum(obs$EI2001 == 1) * 100
+  toET   <- sum(obs$EI2001 == 0 & ei_t == 1 & moved) / sum(obs$EI2001 == 0) * 100
+
+  tibble(year = t, fromET, toET)
+}
+#>
+```
+
+Im nächsten Schritt wenden wir die Funktion auf verschiedene Vergleichsjahre an. Das Jahr 2002 fehlt, da die Forbes-Daten für dieses Jahr keine Angaben zum Wohnsitzstaat enthalten.
+
+Die Übergangswahrscheinlichkeiten berechnen wir für drei Gruppen: zunächst für alle beobachteten Personen, anschließend getrennt für Personen, die im Jahr 2001 mindestens 65 Jahre alt waren, und für Personen unter 65 Jahren. Dadurch können wir erkennen, ob sich die Mobilität zwischen Estate-Tax- und Non-Estate-Tax-Staaten systematisch mit dem Alter unterscheidet. Diese Altersdimension wird später im Anhang mit der Triple-Difference-Analyse noch genauer untersucht.
+
+**Aufgabe**: Berechne die Übergangswahrscheinlichkeiten für alle Personen sowie getrennt für die beiden Altersgruppen. Führe dafür den folgenden Code aus.
+
+```{r "3_3_3"}
+#< task
+years <- c(1993:2000, 2003:2009)
+
+results <- bind_cols(
+  bind_rows(lapply(years, move_probs, df = wide)) %>%
+    rename(all_from = fromET, all_to = toET),
+
+  bind_rows(lapply(years, move_probs, df = wide, age_min = 65)) %>%
+    select(old_from = fromET, old_to = toET),
+
+  bind_rows(lapply(years, move_probs, df = wide, age_max = 64)) %>%
+    select(yng_from = fromET, yng_to = toET)
+)
+#>
+```
+
+Um die berechneten Übergangswahrscheinlichkeiten grafisch darzustellen, erstellen wir die Funktion `plot_panel()`. Damit können wir für jede Altersgruppe ein eigenes Diagramm erzeugen, ohne den gleichen Code mehrfach schreiben zu müssen.
+
+Die senkrechte Linie markiert das Reformjahr 2001. Vor der Reform sollten die steuerlichen Unterschiede zwischen den Staaten für die Forbes 400 nur eine geringe Rolle gespielt haben. Interessant ist daher vor allem, ob sich die beiden Bewegungsrichtungen nach 2001 unterschiedlich entwickeln.
+
+**Aufgabe**: Erstelle die Funktion `plot_panel()`, mit der wir die Übergangswahrscheinlichkeiten für die verschiedenen Altersgruppen darstellen können. Führe den vorgegebenen Code aus.
+
+```{r "3_3_4"}
+#< task
+plot_panel <- function(df, from_col, to_col, title) {
+  df %>%
+    select(year, `ET → non-ET` = all_of(from_col),
+                 `non-ET → ET` = all_of(to_col)) %>%
+    pivot_longer(-year, names_to = "series", values_to = "value") %>%
+
+    ggplot(aes(year, value, color = series, linetype = series)) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 2) +
+    geom_vline(xintercept = 2001, color = "black") +
+    geom_hline(yintercept = 0,    color = "grey70") +
+    scale_x_continuous(breaks = seq(1993, 2009, 2)) +
+    scale_y_continuous(limits = c(-2, 44), breaks = seq(0, 45, 5)) +
+    scale_color_manual(values   = c("ET → non-ET" = "navy", "non-ET → ET" = "red")) +
+    scale_linetype_manual(values = c("ET → non-ET" = "solid","non-ET → ET" = "dashed")) +
+    labs(title = title, x = "Jahr",
+         y = "Anteil der Forbes 400 (%)",
+         color = NULL, linetype = NULL) +
+    theme_classic() +
+    theme(legend.position = "bottom")
+}
+#>
+```
+
+Mit `plot_panel()` haben wir nun eine Funktion erstellt, die wir für verschiedene Altersgruppen wiederverwenden können. Beim Aufrufen der Funktion legen wir über `from_col` und `to_col` fest, welche Spalten aus `results` dargestellt werden sollen. Mit `title` bestimmen wir die jeweilige Überschrift. Dadurch können wir alle drei Gruppen einheitlich darstellen und ihre Ergebnisse direkt miteinander vergleichen.
+
+**Aufgabe**: Zum Schluss erstellen wir die drei Panels mit der Funktion für alle Personen, für die 65-Jährigen und Älteren sowie für die Unter-65-Jährigen. Wir zeigen diese nebeneinander mit dem Paket `patchwork` an.
+
+```{r "3_3_5"}
+#< fill_in
+___ <- plot_panel(results, "all_from", "all_to", "A: Alle")
+p2 <- ___(results, "old_from", "old_to", "B: 65 und älter")
+p3 <- plot_panel(___, "yng_from", "yng_to", "C: Unter 65")
+
+((p1 | plot_spacer()) / (p2 | p3)) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+
+#>
+p1 <- plot_panel(results, "all_from", "all_to", "A: Alle")
+p2 <- plot_panel(results, "old_from", "old_to", "B: 65 und älter")
+p3 <- plot_panel(results, "yng_from", "yng_to", "C: Unter 65")
+
+((p1 | plot_spacer()) / (p2 | p3)) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+#< quiz "Umzüge nach Alter"
+question: Bei welcher Gruppe ist die Abwanderung aus Estate-Tax-Staaten nach 2001 am stärksten ausgeprägt?
+sc:
+    - Unter 65-Jährige
+    - 65-Jährige und Ältere*
+    - Bei beiden gleich
+success: Richtig! Für Ältere rückt die Steuer zeitlich näher.
+failure: Leider falsch.
+#>
+
+Die drei Grafiken verdeutlichen, was hinter den zuvor beobachteten Veränderungen auf Staatsebene stehen kann. Nach der Reform ziehen deutlich mehr Forbes-400-Personen aus Staaten mit Estate Tax in Staaten ohne Estate Tax als in die entgegengesetzte Richtung. Damit beobachten wir nicht nur einen Rückgang der Anzahl von Forbes-400-Personen in Estate-Tax-Staaten, sondern können diesen auch mit tatsächlichen Wohnsitzwechseln einzelner Personen in Verbindung bringen.
+
+Im Paper zeigt sich dieser Unterschied besonders deutlich einige Jahre nach der Reform: Bis 2010 waren rund 21,4 % der Personen, die 2001 in einem Estate-Tax-Staat lebten, in einen Staat ohne Estate Tax gezogen. Von den Personen, die 2001 in einem Staat ohne Estate Tax lebten, wechselten dagegen nur rund 1,2 % in einen Estate-Tax-Staat. Die beiden Bewegungsrichtungen sind damit deutlich asymmetrisch.
+
+Auch die Aufteilung nach Alter liefert ein klares Muster. Bei den 65-Jährigen und Älteren ist die Abwanderung aus Estate-Tax-Staaten deutlich stärker ausgeprägt als bei den Unter-65-Jährigen. Für jüngere Personen liegen die beiden Bewegungsrichtungen wesentlich näher beieinander und die Mobilität fällt insgesamt geringer aus.
+
+Dieses Altersmuster passt zur ökonomischen Idee hinter der Analyse: Da die Estate Tax erst beim Tod anfällt, dürfte sie bei älteren Personen stärker in die Wohnortentscheidung einfließen als bei jüngeren. Die Ergebnisse auf Individualebene ergänzen damit die vorherige Difference-in-Differences-Analyse und zeigen einen möglichen Mechanismus hinter dem relativen Rückgang der Forbes 400 in Estate-Tax-Staaten: tatsächliche Umzüge, die sich besonders auf ältere Milliardäre konzentrieren. Auch Moretti und Wilson (2023b) berichten, dass die Unterschiede in den Umzugswahrscheinlichkeiten für Personen ab 65 Jahren deutlich stärker ausgeprägt sind.
+
+Im Anhang betrachten wir diese Altersdimension noch genauer. Aufgabe A1 untersucht zunächst deskriptiv den Zusammenhang zwischen Alter und Wohnsitz in Estate-Tax-Staaten und Aufgabe A2 erweitert die Analyse anschließend um eine Triple-Difference-Schätzung. Dadurch lässt sich genauer prüfen, ob ältere Forbes-400-Personen nach der Reform von 2001 besonders stark auf Estate Taxes reagieren.
+
+<!-- ==================================================================================================================== -->
+
+## Exercise 4. -- Kosten und Nutzen einer Erbschaftsteuer
+
+### 4.1 -- Der fiskalische Trade-off
+
+Die empirische Analyse in Kapitel 3 hat gezeigt, dass Erbschaftsteuern die Wohnortwahl sehr vermögender Personen beeinflussen können. Nach der Reform von 2001 leben relativ weniger Forbes-400-Personen in Bundesstaaten mit Estate Tax, wobei die Reaktion insbesondere bei älteren Vermögenden stärker ausfällt. Dieser geschätzte Effekt, die Elastizität η, bildet die Grundlage für die folgende Kosten-Nutzen-Analyse.
+
+Während Kapitel 3 untersucht hat, ob und wie stark Vermögende auf eine Estate Tax reagieren, geht es nun um die fiskalischen Folgen dieser Reaktion.
+
+Ein Staat, der eine Erbschaftsteuer einführt, steht dabei vor einem Zielkonflikt. Auf der einen Seite erzielt er beim Tod der im Staat verbleibenden Vermögenden eine einmalige zusätzliche Steuereinnahme. Auf der anderen Seite verliert er die laufenden Einkommensteuereinnahmen jener Personen, die wegen der Steuer abwandern, und zwar über deren gesamte verbleibende Lebenszeit.
+
+Die Kosten-Nutzen-Analyse stellt diese beiden Größen gegenüber und beantwortet damit die eigentliche wirtschaftspolitische Frage: Lohnt sich die Einführung einer Erbschaftsteuer für einen Staat überhaupt?
+
+### 4.2 -- Das Grundmodell
+
+Um die grundlegende Logik zu verstehen, betrachten wir zunächst einen vereinfachten Fall mit einem repräsentativen Vermögenden in einem repräsentativen Bundesstaat. Dabei unterscheiden wir zwischen dem fiskalischen Nutzen und den fiskalischen Kosten einer Estate Tax.
+
+Der Nutzen besteht aus den zukünftigen Erbschaftsteuereinnahmen derjenigen Vermögenden, die trotz der Steuer im Staat bleiben:
+
+$$
+(1)\quad Benefits_s = \left(\frac{1}{1+r}\right)^T \cdot N_s \cdot (1-\eta) \cdot W \cdot \tau_s^W
+$$
+
+#< info "Variablenbeschreibung (1)"
+- $Benefits_s$: abgezinster Nutzen der Einführung einer Estate Tax im Staat $s$ 
+- $r$: Diskontsatz 
+- $T$: verbleibende Lebensdauer bis zum Anfall der Erbschaftsteuer 
+- $N_s$: Anzahl der vermögenden Personen im Staat $s$ 
+- $\eta$: Anteil der Personen, die aufgrund der Estate Tax abwandern 
+- $1-\eta$: Anteil der Personen, die im Staat verbleiben 
+- $W$: steuerrelevantes Vermögen pro Person 
+- $\tau_s^W$: effektiver Erbschaftsteuersatz im Staat $s$ 
+#>
+
+Die Benefit-Funktion misst die erwarteten zusätzlichen Steuereinnahmen aus der Erbschaftsteuer. Pro Person fällt beim Tod der Betrag $W \cdot \tau_s^W$ an, also das steuerrelevante Vermögen multipliziert mit dem Steuersatz. Von den ursprünglich $N_s$ Vermögenden bleibt aber nur der Anteil $(1-\eta)$ im Staat. Die Übrigen wandern ab und tragen nichts zum Aufkommen bei. Nur die Bleibenden erzeugen also überhaupt einen fiskalischen Nutzen. Da die Erbschaftsteuer erst beim Tod anfällt, im Schnitt in $T$ Jahren, wird dieser künftige Ertrag mit dem Faktor $\left(\frac{1}{1+r}\right)^T$ auf den heutigen Wert abgezinst. Der Nutzen hängt damit von drei Größen ab: der Höhe der Steuerbasis, der Mobilitätsreaktion der Betroffenen und dem geltenden Steuersatz.
+
+Neben dem fiskalischen Nutzen entstehen durch die Estate Tax auch Kosten. Diese ergeben sich aus den entgangenen Einkommensteuereinnahmen der Vermögenden, die aufgrund der Erbschaftsteuer den Bundesstaat verlassen. Die Kosten berechnen wir mit folgender Formel:
+
+$$
+(2)\quad Costs_s = \sum_{j=1}^{T} \left(\frac{1}{1+r}\right)^j \cdot N_s \cdot \eta \cdot Y \cdot \tau_s^Y
+$$
+
+#< info "Variablenbeschreibung (2)"
+- $Costs_s$: abgezinste Kosten der Einführung einer Estate Tax im Staat $s$ 
+- $j$: Index für die einzelnen Jahre bis zum Todeszeitpunkt 
+- $r$: Diskontsatz 
+- $T$: verbleibende Lebensdauer 
+- $N_s$: Anzahl der vermögenden Personen im Staat $s$ 
+- $\eta$: Anteil der Personen, die aufgrund der Estate Tax abwandern 
+- $Y$: steuerpflichtiges Jahreseinkommen pro Person 
+- $\tau_s^Y$: Einkommensteuersatz im Staat $s$ 
+#>
+
+#< quiz "Treiber der Kosten"
+question: Welche Größen erhöhen ceteris paribus die Kosten einer Estate Tax?
+mc:
+    - Ein höherer Anteil abwandernder Personen η*
+    - Ein höherer Einkommensteuersatz τ^Y*
+    - Ein höheres Jahreseinkommen Y*
+    - Ein höherer Erbschaftsteuersatz τ^W
+success: Richtig! τ^W wirkt nur auf den Nutzen.
+failure: Nicht alle Antworten sind korrekt.
+#>
+
+Von den ursprünglich $N_s$ Vermögenden verlassen aufgrund der Estate Tax insgesamt $N_s \cdot \eta$ Personen den Staat. Jede dieser Personen hätte jährlich Einkommensteuer in Höhe von $Y \cdot \tau_s^Y$ gezahlt. Da dem Staat diese Einnahmen über die gesamte verbleibende Lebensdauer $T$ entgehen, werden die jährlichen Verluste von $j=1$ bis $T$ aufsummiert. Dabei wird jeder zukünftige Einnahmeverlust mit dem Faktor $\left(\frac{1}{1+r}\right)^j$ auf seinen heutigen Wert abgezinst. Je mehr Vermögende abwandern und je höher der Einkommensteuersatz ist, desto größer sind die fiskalischen Kosten für den Staat.
+
+### 4.3 -- Verallgemeinerung nach Altersgruppen
+
+Das Grundmodell ist hilfreich, unterstellt aber, dass alle Vermögenden gleich stark auf die Estate Tax reagieren und dieselbe verbleibende Lebensdauer besitzen. Für unsere Analyse ist diese Annahme zu restriktiv. Die Ergebnisse aus Kapitel 3 zeigen, dass die Mobilitätsreaktion mit dem Alter zunimmt. Gleichzeitig unterscheidet sich auch die verbleibende Lebenserwartung deutlich zwischen jüngeren und älteren Personen.
+
+Deshalb erweitern wir das Modell um das Alter `a`. Nutzen und Kosten werden nun zunächst für jede Altersgruppe einzeln berechnet und anschließend über alle Altersgruppen aufsummiert.
+
+Die erweiterte Nutzenfunktion lautet:
+
+$$
+(3)\quad
+Benefits_s = \sum_{a=0}^{100}\left[\left(\frac{1}{1+r}\right)^{T_a}\cdot N_{a,s}\cdot W\cdot(1-\eta_a)\cdot\tau_s^W\right]
+$$
+
+#< info "Variablenbeschreibung (3)" 
+- $a$: Alter 
+- $T_a$: verbleibende Lebenserwartung im Alter $a$ 
+- $N_{a,s}$: Anzahl vermögender Personen im Alter $a$ im Staat $s$ 
+- $\eta_a$: altersabhängige Mobilitätsreaktion 
+- $W$: steuerrelevantes Vermögen 
+- $\tau_s^W$: effektiver Erbschaftsteuersatz im Staat $s$ 
+#>
+
+Die Summenschreibweise lässt sich dabei wie eine schrittweise Berechnung für jede Altersgruppe verstehen. Für die Benefits wird zunächst für jedes Alter $a$ separat berechnet, wie hoch die erwarteten Erbschaftsteuereinnahmen dieser Gruppe sind. Anschließend werden diese einzelnen Beträge addiert:
+
+$$
+Benefits = Benefit_{0} + Benefit_{1} + \dots + Benefit_{100}.
+$$
+
+Für eine bestimmte Altersgruppe, beispielsweise die 70-Jährigen, wird also betrachtet, wie viele Vermögende dieses Alters im Staat leben, welcher Anteil aufgrund der Erbschaftsteuer im Staat verbleibt und welche Steuereinnahmen aus ihrem Vermögen nach ihrer erwarteten verbleibenden Lebenszeit entstehen. Dasselbe wird für alle anderen Altersgruppen durchgeführt. Die Summe $\sum_{a=0}^{100}$ fasst diese einzelnen Beiträge schließlich zu den gesamten erwarteten Erbschaftsteuereinnahmen des Staates zusammen.
+
+Analog wird die Kostenfunktion erweitert:
+
+$$
+(4)\quad Costs_s =\sum_{a=0}^{100}\left[\sum_{i=1}^{T_a}\left(\frac{1}{1+r}\right)^i\cdot N_{a,s}\cdot Y\cdot \eta_a\cdot \tau_s^Y\right]
+$$
+
+#< info "Variablenbeschreibung (4)" 
+- $a$: Alter 
+- $i$: Jahr innerhalb der verbleibenden Lebenszeit 
+- $T_a$: verbleibende Lebenserwartung im Alter $a$ 
+- $N_{a,s}$: Anzahl vermögender Personen im Alter $a$ im Staat $s$ 
+- $\eta_a$: altersabhängige Mobilitätsreaktion 
+- $Y$: steuerpflichtiges Jahreseinkommen 
+- $\tau_s^Y$: Einkommensteuersatz im Staat $s$ 
+#>
+
+Bei der erweiterten Kostenfunktion berücksichtigen wir sowohl das Alter der Vermögenden als auch ihre verbleibende Lebenserwartung. Für jede Altersgruppe berechnen wir zunächst die entgangenen Einkommensteuereinnahmen über die noch verbleibenden Lebensjahre.
+
+Die Doppelsumme lässt sich vereinfacht als
+
+$$Costs_s = \underbrace{Costs_{0}}_{\text{Jahre }1,\ldots,T_0} + \underbrace{Costs_{1}}_{\text{Jahre }1,\ldots,T_1} + \dots + \underbrace{Costs_{100}}_{\text{Jahre }1,\ldots,T_{100}}$$
+
+darstellen.
+
+Betrachten wir beispielsweise die 70-Jährigen: Für diese Altersgruppe werden die entgangenen Einkommensteuereinnahmen vom ersten Jahr bis zum Ende ihrer verbleibenden Lebenserwartung $T_{70}$ aufsummiert. Anschließend führen wir dieselbe Berechnung für alle anderen Altersgruppen durch. Die **innere Summe über $i$** erfasst somit die jährlichen Einnahmeverluste über die verbleibende Lebenszeit einer Altersgruppe, während die **äußere Summe über $a$** anschließend die Kosten aller Altersgruppen von 0 bis 100 Jahren zusammenfasst.
+
+
+
+### 4.4 -- Das Entscheidungskriterium
+
+Ob sich die Einführung einer Estate Tax für einen Bundesstaat fiskalisch lohnt, hängt davon ab, ob die zusätzlichen Erbschaftsteuereinnahmen die entgangenen Einkommensteuereinnahmen übersteigen. Um dies zu beurteilen, setzen wir die berechneten Kosten und den Nutzen ins Verhältnis. Daraus ergibt sich die **Cost-Benefit-Ratio**:
+
+$$
+\text{Cost-Benefit-Ratio}_s = \frac{Costs_s}{Benefits_s}
+$$
+
+#< quiz "Kosten und Nutzen" 
+question: Wann lohnt sich die Einführung einer Erbschaftsteuer für einen Staat fiskalisch? 
+sc: 
+- Wenn die Cost-Benefit-Ratio kleiner als eins ist* 
+- Wenn die Cost-Benefit-Ratio größer als eins ist 
+- Wenn alle Vermögenden abwandern 
+- Wenn der Staat keine Erbschaftsteuer erhebt 
+success: Richtig! Bei einer Cost-Benefit-Ratio unter 1 übersteigt der fiskalische Nutzen die Kosten.
+failure: Nicht ganz. Überlege, ob die Kosten oder der Nutzen größer sein müssen.
+#>
+
+<br>
+
+Ob sich die Einführung einer Estate Tax für einen Bundesstaat lohnt, hängt davon ab, wie hoch die zusätzlichen Steuereinnahmen im Verhältnis zu den Kosten durch Abwanderung sind. Übersteigt der Nutzen die Kosten, liegt die Cost-Benefit-Ratio unter 1 und der Staat erzielt insgesamt zusätzliche Einnahmen.
+
+$$
+\frac{Costs_s}{Benefits_s} < 1
+$$
+
+Liegt die Cost-Benefit-Ratio dagegen über 1, sind die entgangenen Einkommensteuereinnahmen größer als die zusätzlichen Erbschaftsteuereinnahmen. Bei einem Wert von genau 1 gleichen sich Kosten und Nutzen aus.
+
+Eine wichtige Rolle spielt dabei der Einkommensteuersatz $\tau_s^Y$. Je höher dieser ist, desto mehr Einnahmen verliert ein Staat durch die Abwanderung vermögender Personen. Bei ansonsten gleichen Bedingungen steigt dadurch die Cost-Benefit-Ratio. Staaten mit niedrigen Einkommensteuersätzen haben dagegen geringere Kosten durch Abwanderung. Erhebt ein Staat überhaupt keine Einkommensteuer, entstehen im Modell keine entsprechenden Einnahmeverluste ($Costs = 0$). Solange die Erbschaftsteuer zusätzliche Einnahmen bringt, beträgt die Cost-Benefit-Ratio in diesem Fall ebenfalls 0.
+
+Dieselbe Aussage lässt sich auch über die erwarteten Nettoeinnahmen ausdrücken:
+
+$$
+Net\ Revenues_s = Benefits_s - Costs_s
+$$
+
+Sind die Nettoeinnahmen positiv, übersteigt der Nutzen die Kosten. Dies entspricht einer Cost-Benefit-Ratio unter 1.
+
+Neben dem Einkommensteuersatz beeinflussen auch die Altersstruktur der Vermögenden, ihre Mobilitätsreaktion, die verbleibende Lebenserwartung, das steuerrelevante Vermögen und die Diskontierung zukünftiger Einnahmen das Ergebnis.
+
+<!-- ==================================================================================================================== -->
+
+## Exercise 5. -- Schätzungen der Kosten und Nutzen einer Erbschaftsteuer
+
+In Kapitel 4 haben wir das Kosten-Nutzen-Modell theoretisch hergeleitet. Nun wenden wir die Formeln (3) und (4) auf die tatsächlichen Daten an. Ziel ist es, für jeden Bundesstaat abzuschätzen, ob sich die Einführung einer Erbschaftsteuer fiskalisch lohnt. Dazu berechnen wir für jeden Staat die Cost-Benefit-Ratio. Sie setzt die erwarteten fiskalischen Kosten der Abwanderung ins Verhältnis zu den erwarteten Einnahmen aus der Erbschaftsteuer. Ein Wert unter 1 bedeutet somit, dass die erwarteten Einnahmen größer sind als die entstehenden Kosten.
+
+**Aufgabe**: Zunächst laden wir den Datensatz `Indiv_Analysis.rds`, der unter anderem die Vermögenswerte der Forbes-400-Personen enthält. Da wir für unsere Berechnung das Jahr `2017` betrachten, filtern wir den Datensatz auf dieses Jahr. Zuletzt geben wir ihn mit `head()` aus.
+
+```{r "5_1_0"}
+#< fill_in
+IndivAnalysis <- readRDS("Indiv_Analysis.rds") %>%
+  filter(year == ___)
+
+head(IndivAnalysis)
+#>
+IndivAnalysis <- readRDS("Indiv_Analysis.rds") %>%
+  filter(year == 2017)
+
+head(IndivAnalysis)
+```
+
+Jede Zeile des gefilterten Datensatzes enthält Informationen zu einer Forbes-400-Person im Jahr 2017. Besonders wichtig ist die Variable `wealth`, die das geschätzte Vermögen der jeweiligen Person in Milliarden US-Dollar angibt. Sie bildet die Grundlage für die zu erwartenden Erbschaftsteuereinnahmen, denn je größer das Vermögen, desto höher fällt die Steuer im Todesfall aus.
+
+**Aufgabe**: Als Nächstes laden wir den Datensatz `State_Year_Age.rds`, der die Daten nach Bundesstaat und Altersgruppe enthält. Um zusätzlichen Code zu vermeiden, wurde dieser bereits leicht vorbereitet. Unter anderem ist mit `remaining_life_base` jeder Altersgruppe bereits die entsprechende verbleibende Lebenserwartung zugeordnet. Auch diesen Datensatz filtern wir auf das Jahr `2017`. Anschließend geben wir ihn ebenfalls mit `head()` aus.
+
+```{r "5_1_1"}
+#< task
+state_year_age_2017 <- readRDS("State_Year_Age.rds") %>%
+  filter(year == 2017)
+
+# Ausgabe des Datensatzes
+
+#>
+state_year_age_2017 <- readRDS("State_Year_Age.rds") %>%
+  filter(year == 2017)
+
+head(state_year_age_2017)
+```
+
+Jede Zeile enthält Informationen zu einem Bundesstaat und einer Altersgruppe im Jahr 2017. Neben der Anzahl `stock` und dem Vermögen `wealth` der Forbes-400-Personen enthält der Datensatz weitere Größen, die wir für die Kosten-Nutzen-Berechnung benötigen. Dazu gehören insbesondere die verbleibende Lebenserwartung `remaining_life_base`, die bestimmt, wie lange ein Staat noch Einkommensteuer erhält, bevor die Erbschaftsteuer fällig wird, sowie der Einkommensteuersatz `PIT`.
+
+Für die Berechnung benötigen wir neben den Daten einige feste Modellparameter. Diese übernehmen wir von Moretti und Wilson (2023b) und orientieren uns dabei an deren Annahmen zur altersabhängigen Mobilität der Vermögenden, zur verbleibenden Lebenserwartung und zur Diskontierung zukünftiger Steuereinnahmen.
+
+**Aufgabe**: Zunächst legen wir die Modellparameter fest. Ergänze den Erbschaftsteuersatz `estate_tax_rate` von `16 %`. Anschließend berechnen wir das durchschnittliche steuerrelevante Vermögen `wealth_base` auf Basis der Forbes-400-Daten von 2017. Dabei rechnen wir die Vermögenswerte zunächst in Millionen US-Dollar um und berücksichtigen mit dem Faktor `8.25 / 16` den Unterschied zwischen dem geschätzten effektiven Erbschaftsteuersatz von `8,25 %` und dem gesetzlichen Steuersatz von `16 %`. Aus diesem angepassten Vermögen berechnen wir schließlich das jährliche steuerpflichtige Einkommen `income_base`. Dafür nehmen wir an, dass das Einkommen `10,3 %` des Vermögens beträgt. Ergänze die entsprechenden Werte.
+
+```{r "5_1_2"}
+#< fill_in
+# Modellparameter
+estate_tax_rate    <- ___
+mobility_intercept <- 0.00186
+mobility_age_slope <- 0.00320
+longevity_factor   <- 89.783 / 82.585
+discount_rate      <- 0.02
+wealth_growth      <- 1
+spouse             <- 0
+
+wealth_base <- mean(IndivAnalysis$wealth) * 1000 * 8.25 / 16
+
+income_base <- wealth_base * ___
+#>
+estate_tax_rate    <- 0.16
+mobility_intercept <- 0.00186
+mobility_age_slope <- 0.00320
+longevity_factor   <- 89.783 / 82.585
+discount_rate      <- 0.02
+wealth_growth      <- 1
+spouse             <- 0
+
+wealth_base <- mean(IndivAnalysis$wealth) * 1000 * 8.25 / 16
+
+income_base <- wealth_base * 0.103
+```
+
+#< info "Modellparameter der Kosten-Nutzen-Analyse"
+Für die Berechnung werden die folgenden Parameter auf Grundlage der Annahmen von Moretti und Wilson (2023b) übernommen:
+
+- **`estate_tax_rate = 0.16`**: Gesetzlicher Erbschaftsteuersatz von 16 %, den nahezu alle Estate-Tax-Staaten anwenden.
+
+- **`mobility_intercept = 0.00186`**: Ausgangswert der geschätzten Mobilitätsreaktion der Vermögenden auf eine Estate Tax.
+
+- **`mobility_age_slope = 0.00320`**: Beschreibt, wie stark die Mobilitätsreaktion mit jedem zusätzlichen Lebensjahr zunimmt. Beide Mobilitätsparameter stammen aus der Regression in Tabelle 4 des Papers.
+
+- **`longevity_factor = 89.783 / 82.585`**: Berücksichtigt die höhere Lebenserwartung sehr vermögender Personen im Vergleich zur übrigen Bevölkerung. Der Faktor basiert auf den Ergebnissen von Chetty et al. (2016).
+
+- **`discount_rate = 0.02`**: Zukünftige Steuereinnahmen werden mit einem jährlichen Zinssatz von 2 % diskontiert.
+
+- **`wealth_growth = 1`**: Im Basisszenario wird angenommen, dass das reale Vermögen und Einkommen über die Zeit konstant bleiben, also nicht wachsen.
+
+- **`spouse = 0`**: Im Basisszenario werden keine zusätzlichen Lebensjahre aufgrund eines jüngeren Ehepartners berücksichtigt.
+
+Zusätzlich berechnen wir zwei Größen:
+
+- **`wealth_base`**: Durchschnittliches steuerrelevantes Vermögen der Forbes-400-Personen im Jahr 2017. Raub et al. (2010) zeigen, dass das in Steuererklärungen ausgewiesene Vermögen im Durchschnitt nur etwa die Hälfte der Forbes-Schätzungen beträgt. Der Faktor `8.25 / 16` berücksichtigt den von Moretti und Wilson (2023b) geschätzten effektiven Erbschaftsteuersatz von 8,25 % im Verhältnis zum gesetzlichen Steuersatz von 16 %.
+
+- **`income_base`**: Geschätztes jährliches steuerpflichtiges Einkommen. Wir nehmen an, dass dieses 10,3 % des steuerrelevanten Vermögens beträgt.
+#>
+
+
+### Berechnung der Kosten
+
+Wir beginnen mit den fiskalischen Kosten aus Formel (4). Diese entstehen durch die entgangenen Einkommensteuereinnahmen der Vermögenden, die aufgrund der Estate Tax den Bundesstaat verlassen.
+
+Da dem Staat diese Einnahmen über mehrere Jahre entgehen, müssen wir die jährlichen Verluste aufsummieren und auf ihren heutigen Wert abzinsen. Dafür erstellen wir zunächst die Hilfsfunktion `cost_factor()`, die die innere Summe der Kostenformel berechnet.
+
+**Aufgabe**: Erstelle die Funktion `cost_factor()` und berechne anschließend für jede Kombination aus Bundesstaat und Altersgruppe die erwarteten Kosten `cost`. Führe den vorgegebenen Code aus.
+
+```{r "5_1_3"}
+#< task
+# Barwertfaktor berechnen
+cost_factor <- function(years, discount_rate, wealth_growth) {
+  i <- seq_len(years)
+  sum((1 / (1 + discount_rate))^i * wealth_growth^i)
+}
+
+# Kosten berechnen
+state_year_age_2017 <- state_year_age_2017 %>%
+  mutate(
+    # Benötigte Variablen
+    remaining_life = remaining_life_base * longevity_factor + spouse,
+    wealth = wealth * 1000,
+    mobility = mobility_intercept + mobility_age_slope * Age_num,
+
+    # Kosten
+    cost = stock * mobility *
+      income_base * (PIT / 100) *
+      sapply(
+        round(remaining_life),
+        cost_factor,
+        discount_rate = discount_rate,
+        wealth_growth = wealth_growth
+      )
+  )
+#>
+```
+
+#### Bestandteile der Kostenformel
+
+Die Kostenberechnung lässt sich vereinfacht folgendermaßen darstellen:
+
+$$
+\text{Kosten} = \text{Abwandernde} \times \text{jährliche Einkommensteuer} \times \text{Barwertfaktor}
+$$
+
+Die einzelnen Bestandteile setzen wir wie folgt um:
+
+- `stock * mobility`: Erwartete Anzahl der abwandernden Vermögenden.
+- `income_base * (PIT / 100)`: Jährliche Einkommensteuereinnahmen pro Person.
+- `cost_factor()`: Barwertfaktor für die zukünftigen jährlichen Einnahmeverluste.
+
+Die Funktion `cost_factor()` berücksichtigt die verbleibende Lebenszeit und den Diskontsatz. Zusätzlich wird mit `wealth_growth` ein jährliches Wachstum der Einnahmeverluste angenommen.
+
+Mit `sapply()` wenden wir die Funktion auf die verbleibende Lebenszeit jeder Beobachtung an. So erhalten wir für jede Altersgruppe einen eigenen Barwertfaktor.
+
+Durch die Multiplikation dieser Bestandteile berechnen wir schließlich die erwarteten Kosten cost für jede Altersgruppe innerhalb eines Bundesstaates.
+
+### Berechnung des Nutzens
+
+Nachdem wir die Kosten berechnet haben, betrachten wir den fiskalischen Nutzen aus Formel (3). Dieser entsteht durch die zukünftigen Erbschaftsteuereinnahmen der Vermögenden, die trotz der Steuer im Bundesstaat bleiben.
+
+Anders als bei den Kosten müssen wir hier keine jährlichen Einnahmeverluste aufsummieren. Die Erbschaftsteuer fällt erst beim Tod an, weshalb wir die erwarteten Einnahmen einmalig über die verbleibende Lebenserwartung abzinsen.
+
+**Aufgabe**: Berechne nun den erwarteten Nutzen `benefit` für jede Kombination aus Bundesstaat und Altersgruppe. Verwende dafür die zuvor berechneten Variablen und führe den Code aus.
+
+```{r "5_1_4"}
+#< task
+state_year_age_2017 <- state_year_age_2017 %>%
+  mutate(
+    # Nutzen
+    benefit =
+      stock * (1 - mobility) *
+      (wealth_base * wealth_growth^remaining_life) *
+      estate_tax_rate *
+      (1 / (1 + discount_rate))^remaining_life
+  )
+#>
+```
+
+#### Bestandteile der Nutzenformel
+
+Auch die Nutzenberechnung können wir vereinfacht darstellen:
+
+$$
+\text{Nutzen} = \text{Verbleibende} \times \text{zukünftiges Vermögen} \times \text{Erbschaftsteuersatz} \times \text{Abzinsungsfaktor}
+$$
+
+Die Berechnung erfolgt dabei wie folgt:
+
+- `stock * (1 - mobility)`: Erwartete Anzahl der Vermögenden, die im Bundesstaat bleiben.
+- `wealth_base * wealth_growth^remaining_life`: Erwartetes steuerrelevantes Vermögen zum Todeszeitpunkt.
+- `estate_tax_rate`: Effektiver Erbschaftsteuersatz.
+- `(1 / (1 + discount_rate))^remaining_life`: Abzinsungsfaktor, mit dem die zukünftigen Erbschaftsteuereinnahmen auf ihren heutigen Wert abgezinst werden.
+
+Durch die Multiplikation dieser Bestandteile erhalten wir den erwarteten fiskalischen Nutzen `benefit` für jede Altersgruppe innerhalb eines Bundesstaates.
+
+Damit haben wir die erwarteten Kosten und den fiskalischen Nutzen für jede Altersgruppe innerhalb eines Bundesstaates berechnet. Um beurteilen zu können, ob sich eine Estate Tax für einen Staat insgesamt lohnt, müssen wir diese Ergebnisse noch zusammenfassen.
+
+**Aufgabe**: Fasse die Daten mit `group_by()` und `summarise()` auf Staatsebene zusammen. Gruppiere dazu nach `State` und `abbr` und berechne die Gesamtwerte für Kosten, Nutzen, Forbes-400-Personen und Vermögen sowie den durchschnittlichen Einkommensteuersatz. Bestimme anschließend die `cost_benefit_ratio` als Verhältnis von Kosten zu Nutzen und die Nettoeinnahmen `net_revenues` als Differenz zwischen Nutzen und Kosten. Verwende dafür die Formeln aus Kapitel 4.4.
+
+```{r "5_1_5"}
+#< fill_in
+state_results <- state_year_age_2017 %>% 
+  group_by(___, ___) %>%
+  summarise(
+    cost = sum(cost),
+    benefit = sum(benefit),
+    forbes_population  = sum(stock),
+    wealth = sum(wealth),
+    income_tax_rate  = mean(PIT),
+    EI = round(mean(EI)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    cost_benefit_ratio  = ___ / ___,
+    net_revenues = benefit - cost
+  )
+#>
+state_results <- state_year_age_2017 %>%
+  group_by(State, abbr) %>%
+  summarise(
+    cost = sum(cost),
+    benefit = sum(benefit),
+    forbes_population = sum(stock),
+    wealth = sum(wealth),
+    income_tax_rate = mean(PIT),
+    EI = round(mean(EI)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    cost_benefit_ratio = cost / benefit,
+    net_revenues = benefit - cost
+  )
+```
+
+Für eine übersichtliche Darstellung teilen wir die Bundesstaaten anhand ihres Estate-Tax-Status im Jahr 2017 in zwei Gruppen ein. Gruppe A umfasst Staaten mit Estate Tax, während Gruppe B Staaten ohne Estate Tax enthält. Die Tabelle zeigt neben der Anzahl und dem Vermögen der Forbes 400 auch die Einkommensteuersätze sowie die berechneten Kosten und Nutzen einer Estate Tax. Da die vollständige Tabelle sehr umfangreich wäre, beschränken wir die Darstellung auf ausgewählte Bundesstaaten und ergänzen die Durchschnittswerte beider Gruppen.
+
+
+#< info "transmute()"
+Die Funktion `transmute()` aus dem Paket `dplyr` kombiniert die Funktionen `select()` und `mutate()`. Damit können wir Spalten auswählen, umbenennen und neue Variablen berechnen. Im Gegensatz zu `mutate()` werden dabei alle nicht angegebenen Spalten entfernt.
+
+Ein einfaches Beispiel:
+
+```{r}
+beispiel <- data.frame(
+  State = c("New York", "Florida"),
+  wealth = c(1250.7, 842.3),
+  EI = c(1, 0)
+)
+
+beispiel %>%
+  transmute(
+    State,
+    wealth_mil = round(wealth, 0)
+  )
+```
+
+Hier behalten wir nur die Spalte `State` und die Vermögenswerte `wealth`. Gleichzeitig runden wir die Vermögenswerte auf ganze Zahlen und benennen die Spalte in `wealth_mil` um. Die nicht ausgewählte Spalte `EI` wird entfernt.
+#>
+
+
+**Aufgabe**: Erstelle zunächst mit `transmute()` eine gemeinsame Tabelle `state_overview`, die alle benötigten Variablen enthält und die Werte entsprechend rundet. Teile diese anschließend anhand der Variable Estate Tax `EI` in `et_states` und `non_et_states` auf.
+
+```{r "5_1_6"}
+#< fill_in
+# Gemeinsame Tabelle für alle Staaten
+state_overview <- state_results %>%
+  ___(
+    EI,
+    State,
+    `Forbes-400-Personen` = round(forbes_population, 0),
+    `Forbes-Vermögen (Mio. $)` = round(wealth, 0),
+    `Einkommen-steuersatz (%)` = round(income_tax_rate, 2),
+    `Kosten/Nutzen` = round(cost_benefit_ratio, 2),
+    `Erwartete Nettoeinnahmen (Mio. $)` = round(net_revenues, 0)
+  )
+
+# In die beiden Panels aufteilen
+et_states <- state_overview %>%
+  filter(EI == 1) %>%
+  select(-EI)
+
+non_et_states <- state_overview %>%
+  filter(___ == 0) %>%
+  select(-EI)
+#>
+state_overview <- state_results %>%
+  transmute(
+    EI,
+    State,
+    `Forbes-400-Personen` = round(forbes_population, 0),
+    `Forbes-Vermögen (Mio. $)` = round(wealth, 0),
+    `Einkommen-steuersatz (%)` = round(income_tax_rate, 2),
+    `Kosten/Nutzen` = round(cost_benefit_ratio, 2),
+    `Erwartete Nettoeinnahmen (Mio. $)` = round(net_revenues, 0)
+  )
+
+et_states <- state_overview %>%
+  filter(EI == 1) %>%
+  select(-EI)
+
+non_et_states <- state_overview %>%
+  filter(EI == 0) %>%
+  select(-EI)
+```
+
+Nachdem wir die Bundesstaaten anhand ihres Estate-Tax-Status in zwei Gruppen aufgeteilt haben, wollen wir diese auch insgesamt miteinander vergleichen. Dafür berechnen wir die Durchschnittswerte der einzelnen Variablen innerhalb jeder Gruppe. So können wir später erkennen, wie sich die durchschnittlichen Einkommensteuersätze, Cost-Benefit-Ratios und erwarteten Nettoeinnahmen zwischen Staaten mit und ohne Estate Tax unterscheiden.
+
+**Aufgabe**: Erstelle die Funktion `calculate_averages()`, die mit `summarise()` die Durchschnittswerte der Variablen berechnet und auf die entsprechenden Nachkommastellen rundet. Wende die Funktion anschließend auf `et_states` und `non_et_states` an und speichere die Ergebnisse in `avg_a` und `avg_b`. Führe den vorgegebenen Code aus.
+
+```{r "5_1_7"}
+#< task
+# Funktion zur Berechnung der Durchschnittswerte
+calculate_averages <- function(panel) {
+  panel %>%
+    summarise(
+      State = "Durchschnitt",
+      `Forbes-400-Personen` = round(mean(`Forbes-400-Personen`), 0),
+      `Forbes-Vermögen (Mio. $)` = round(mean(`Forbes-Vermögen (Mio. $)`), 0),
+      `Einkommen-steuersatz (%)` = round(mean(`Einkommen-steuersatz (%)`), 2),
+      `Kosten/Nutzen` = round(mean(`Kosten/Nutzen`, na.rm = TRUE), 2),
+      `Erwartete Nettoeinnahmen (Mio. $)` = round(mean(`Erwartete Nettoeinnahmen (Mio. $)`), 0)
+    )
+}
+
+# Durchschnittswerte beider Gruppen
+avg_a <- calculate_averages(et_states)
+avg_b <- calculate_averages(non_et_states)
+#>
+```
+
+Mit `avg_a` und `avg_b` haben wir nun für jede Gruppe die jeweiligen Durchschnittswerte berechnet. Da eine Tabelle mit sämtlichen Bundesstaaten sehr umfangreich wäre, beschränken wir die Darstellung auf zwei ausgewählte Staaten pro Gruppe. Die Durchschnittswerte bleiben davon unberührt, da sie bereits auf Grundlage aller Bundesstaaten der jeweiligen Gruppe berechnet wurden.
+
+Für eine übersichtliche Darstellung unterteilen wir die Tabelle in 
+
+- A Staaten mit Estate Tax
+- B Staaten ohne Estate Tax
+
+**Aufgabe**: Wähle mit `filter()` aus `et_states` die Bundesstaaten `New York` und `Washington` sowie aus `non_et_states` die Bundesstaaten `California` und `Florida` aus. Speichere die Ergebnisse in `et_states_output` und `non_et_states_output`. Anschließend führen wir die ausgewählten Staaten und die jeweiligen Durchschnittswerte mit `bind_rows()` zu einer gemeinsamen Tabelle zusammen und zeigen diese mit `kable()` an.
+
+```{r "5_1_8"}
+#< fill_in
+# Bundesstaaten auswählen
+et_states_output <- et_states %>%
+  filter(State %in% c("___", "Washington"))
+
+non_et_states_output <- non_et_states %>%
+  filter(State %in% c("California", "___"))
+
+# Tabelle
+cost_benefit_table <- bind_rows(
+  tibble(State = "A: Staaten mit Erbschaftsteuer"),
+  et_states_output,
+  avg_a,
+
+  tibble(State = ""),
+  tibble(State = "B: Staaten ohne Erbschaftsteuer"),
+  non_et_states_output,
+  avg_b
+) %>%
+  rename(Bundesstaat = State)
+
+options(knitr.kable.NA = " ")
+
+# Ausgabe der Tabelle
+kable(
+  cost_benefit_table,
+  caption = "Kosten-Nutzen-Analyse der Bundesstaaten"
+)
+#>
+et_states_output <- et_states %>%
+  filter(State %in% c("New York", "Washington"))
+
+non_et_states_output <- non_et_states %>%
+  filter(State %in% c("California", "Florida"))
+
+cost_benefit_table <- bind_rows(
+  tibble(State = "A: Staaten mit Erbschaftsteuer"),
+  et_states_output,
+  avg_a,
+
+  tibble(State = ""),
+  tibble(State = "B: Staaten ohne Erbschaftsteuer"),
+  non_et_states_output,
+  avg_b
+) %>%
+  rename(Bundesstaat = State)
+
+options(knitr.kable.NA = " ")
+
+kable(
+  cost_benefit_table,
+  caption = "Kosten-Nutzen-Analyse der Bundesstaaten"
+)
+```
+
+#< award "Tax Policy Expert"
+Herzlichen Glückwunsch! Du hast die fiskalischen Kosten und Nutzen einer Estate Tax berechnet und kannst nun beurteilen, für welche Bundesstaaten sich die Einführung einer Erbschaftsteuer lohnt.
+#>
+
+#< quiz "Cost and Benefit"
+question: Für welche der dargestellten Staaten übersteigt der Nutzen einer Estate Tax die Kosten?
+mc:
+    - New York*
+    - Washington*
+    - Florida*
+    - California
+success: Richtig! Kalifornien liegt wegen der hohen Einkommensteuer über 1.
+failure: Nicht ganz. Achte auf die Spalte Cost/Benefit.
+#>
+
+Die Ergebnisse bestätigen den in Kapitel 4 hergeleiteten Zusammenhang. Für den durchschnittlichen Bundesstaat liegt die Cost-Benefit-Ratio deutlich unter 1. Das bedeutet, dass die erwarteten Einnahmen aus einer Erbschaftsteuer die Kosten durch die Abwanderung vermögender Personen übersteigen. Trotz der hohen geschätzten Mobilität der Milliardäre wäre eine Erbschaftsteuer für die meisten Staaten somit fiskalisch vorteilhaft.
+
+Ein wesentlicher Faktor ist dabei die Höhe der bundesstaatlichen Einkommensteuer. Staaten ohne Einkommensteuer, wie Washington oder Florida, haben kaum entsprechende Einnahmeverluste durch die Abwanderung von Milliardären. In Kalifornien ist die Situation dagegen anders: Aufgrund des hohen Einkommensteuersatzes können die entgangenen Einnahmen größer sein als der erwartete Nutzen einer Erbschaftsteuer. Kalifornien stellt damit eine Ausnahme unter den untersuchten Bundesstaaten dar.
+
+Die Streuung zwischen den Staaten geht damit auf den Einkommensteuersatz zurück, der von 0 % bis zu zweistelligen Spitzensätzen reicht. Daraus folgt ein robustes Muster:
+
+-   Ohne Einkommensteuer (z. B. Florida, Texas): keine entgehenden Einnahmen, Verhältnis = 0, die Einführung lohnt sich immer.
+-   Moderate Einkommensteuer (die Mehrheit der Staaten): Nutzen über Kosten, Verhältnis unter 1.
+-   Sehr hohe Einkommensteuer (v. a. Kalifornien): Kosten über Nutzen, Verhältnis über 1, Verlustgeschäft.
+
+Als Faustregel gilt daher: Je höher die Einkommensteuer eines Staates, desto ungünstiger ist eine Erbschaftsteuer.
+
+<!-- ==================================================================================================================== -->
+
+## Exercise 6. -- Fazit und steuerpolitische Implikationen
+
+In dieser Arbeit sind wir der Frage nachgegangen, ob die reichsten US-Amerikanerinnen und US-Amerikaner auf bundesstaatliche Erbschaftsteuern mit einem Wohnsitzwechsel reagieren und was das für die Steuereinnahmen der Bundesstaaten bedeutet. Ausgangspunkt war der Economic Growth and Tax Relief Reconciliation Act von 2001.
+
+### Zentrale Ergebnisse
+
+Zunächst haben wir in Kapitel 1 die geografische Verteilung der Estate Taxes und der Forbes 400 deskriptiv untersucht. Dabei zeigte sich, dass der Anteil der Forbes-400-Personen in Estate-Tax-Staaten nach 2001 zurückging. Wie viel für einen Bundesstaat dabei auf dem Spiel steht, zeigten in Kapitel 2 die Todesfälle von Bud Walton und Edward Gaylord. In beiden Fällen stiegen die Erbschaftsteuereinnahmen danach deutlich an. Schon ein einzelner Milliardär kann für die Einnahmen eines Bundesstaates also sehr wichtig sein.
+
+In Kapitel 3 zeigte die Difference-in-Differences-Schätzung einen negativen Effekt der Estate Tax auf die Zahl der Forbes-400-Personen in den betroffenen Staaten und ebenso auf deren Vermögen. Dieser Effekt bleibt bestehen, wenn zusätzliche Kontrollvariablen hinzugefügt werden, und auch mit einem Instrumentalvariablen-Ansatz. Ein Blick auf die tatsächlichen Umzüge einzelner Milliardäre stützt dieses Ergebnis. Nach der Reform zogen deutlich mehr Forbes-400-Personen aus Estate-Tax-Staaten in Staaten ohne Estate Tax als umgekehrt, insbesondere die über 65-Jährigen.
+
+In den Kapiteln 4 und 5 haben wir die Kosten dieser Abwanderung den erwarteten Erbschaftsteuereinnahmen gegenübergestellt. Die durchschnittliche Cost-Benefit-Ratio liegt sowohl für Staaten mit Estate Tax (0,49) als auch für Staaten ohne Estate Tax (0,31) deutlich unter eins. Im Durchschnitt übersteigen also die erwarteten Erbschaftsteuereinnahmen unter den Modellannahmen von Moretti und Wilson (2023b) die entgangenen Einkommensteuereinnahmen.
+
+### Steuerpolitische Implikationen
+
+Aus den Ergebnissen lassen sich mehrere Schlussfolgerungen für die Steuerpolitik der US-Bundesstaaten ziehen.
+
+Eine zentrale Erkenntnis ist, dass die Abwanderung vermögender Personen nicht automatisch zu geringeren Steuereinnahmen führt. Zwar reagieren die Forbes-400-Personen auf bundesstaatliche Erbschaftsteuern mit Wohnsitzwechseln, dennoch übersteigen die erwarteten Erbschaftsteuereinnahmen in den meisten Bundesstaaten die dadurch entstehenden Kosten. Für viele Staaten ohne Estate Tax könnte sich eine Einführung daher trotz der Abwanderung finanziell lohnen.
+
+Ob sich eine Estate Tax für einen Bundesstaat lohnt, hängt allerdings stark von dessen Einkommensteuersatz ab. Staaten ohne persönliche Einkommensteuer, wie Florida oder Texas, tragen durch die Abwanderung keine Opportunitätskosten in Form entgangener Einkommensteuereinnahmen. Die Cost-Benefit-Ratio liegt bei null, sodass die Einführung einer Estate Tax für sie fiskalisch vorteilhaft ist. Für Florida ergeben unsere Berechnungen beispielsweise erwartete Nettoeinnahmen von rund 8,2 Milliarden US-Dollar.
+In Kalifornien zeigt sich dagegen ein anderes Bild: Aufgrund des hohen Einkommensteuersatzes übersteigen die erwarteten Einnahmeverluste den Nutzen der Erbschaftsteuer. Die Cost-Benefit-Ratio liegt dort bei 1,10. Eine Estate Tax ist daher nicht für jeden Bundesstaat gleichermaßen vorteilhaft. Entscheidend ist vor allem die bestehende Steuerstruktur.
+
+Neben dem Einkommensteuersatz spielt auch das Alter der vermögenden Personen eine Rolle. Die Analysen haben gezeigt, dass insbesondere ältere Milliardäre auf Erbschaftsteuern mit einem Wohnsitzwechsel reagieren. Gleichzeitig ist ihre verbleibende Lebenszeit kürzer, sodass dem Bundesstaat bei einer Abwanderung über einen geringeren Zeitraum Einkommensteuereinnahmen entgehen. Bei denjenigen, die bleiben, fallen die Erbschaftsteuereinnahmen zudem voraussichtlich früher an und müssen entsprechend weniger stark abgezinst werden. Die Altersstruktur der Vermögenden sollte deshalb bei der fiskalischen Bewertung einer Estate Tax ebenfalls berücksichtigt werden.
+
+### Einschränkungen
+
+Bei der Interpretation der Ergebnisse müssen allerdings einige Einschränkungen berücksichtigt werden. Zunächst beruhen die Angaben zum Wohnort der Forbes-400-Personen auf den Veröffentlichungen des Forbes-Magazins. Da sehr vermögende Personen häufig mehrere Wohnsitze besitzen, muss der angegebene Wohnort nicht immer mit dem steuerlich relevanten Hauptwohnsitz übereinstimmen. Dadurch können Messfehler entstehen, die die Ergebnisse beeinflussen.
+
+Eine weitere Einschränkung betrifft die Übertragbarkeit der Ergebnisse. Die Mobilitätsreaktion wurde ausschließlich für die Forbes 400 geschätzt. Ob weniger vermögende Personen ähnlich stark auf Erbschaftsteuern reagieren, bleibt unklar. Die Übertragung der Ergebnisse auf eine breitere Gruppe vermögender Steuerzahler ist daher mit zusätzlichen Annahmen verbunden.
+
+Auch die Kosten-Nutzen-Analyse berücksichtigt nicht alle möglichen wirtschaftlichen Folgen einer Abwanderung. Das Modell erfasst hauptsächlich die entgangenen Einkommensteuereinnahmen, während indirekte Auswirkungen wie die Verlagerung von Unternehmen und Investitionen oder geringere lokale Spenden unberücksichtigt bleiben. Zudem wird angenommen, dass die Mobilitätsreaktion in allen Bundesstaaten gleich ausfällt.
+
+Schließlich hängen die berechneten Kosten und Nutzen von verschiedenen Modellannahmen ab, insbesondere von der Lebenserwartung, dem Diskontsatz und der zukünftigen Vermögensentwicklung. Moretti und Wilson (2023b) zeigen anhand alternativer Szenarien, dass sich die Cost-Benefit-Ratio bei veränderten Annahmen teilweise deutlich verschieben kann. Dennoch bleibt die zentrale Erkenntnis bestehen: In den meisten Bundesstaaten übersteigen die erwarteten Erbschaftsteuereinnahmen die direkten Kosten durch die Abwanderung vermögender Personen.
+
+### Gesamtfazit
+
+Insgesamt zeigt diese Arbeit, dass bundesstaatliche Erbschaftsteuern die Wohnortwahl der Superreichen beeinflussen, insbesondere die älterer Milliardäre. Diese Abwanderung macht eine Estate Tax jedoch nicht automatisch zu einem fiskalischen Verlust. In den meisten Bundesstaaten übersteigen die zusätzlichen Erbschaftsteuereinnahmen die entgangenen Einkommensteuereinnahmen. Ob sich die Steuer lohnt, hängt vor allem von der Höhe der Einkommensteuer im jeweiligen Staat ab.
+
+<!-- ==================================================================================================================== -->
+
+## Exercise Quellenangaben -- {.hidden}
+
+## Quellenangaben
+
+#### **Literatur**
+
+Angrist, J. D., Imbens, G. W., & Rubin, D. B. (1996). Identification of causal effects using instrumental variables. Journal of the American Statistical Association, 91(434), 444–455. <https://doi.org/10.1080/01621459.1996.10476902>
+
+Angrist, J. D., & Pischke, J.-S. (2009). Mostly harmless econometrics: An empiricist’s companion. Princeton University Press. <https://doi.org/10.2307/j.ctvcm4j72>
+
+Bakija, J., & Slemrod, J. (2004). Do the rich flee from high state taxes? Evidence from federal estate tax returns (NBER Working Paper Nr. 10645). National Bureau of Economic Research. <https://doi.org/10.3386/w10645>
+
+Brülhart, M., Gruber, J., Krapf, M., & Schmidheiny, K. (2022). Behavioral responses to wealth taxes: Evidence from Switzerland. American Economic Journal: Economic Policy, 14(4), 111–150. <https://doi.org/10.1257/pol.20200258>
+
+Chetty, R., Stepner, M., Abraham, S., Lin, S., Scuderi, B., Turner, N., Bergeron, A., & Cutler, D. (2016). The association between income and life expectancy in the United States, 2001–2014. JAMA, 315(16), 1750–1766. <https://doi.org/10.1001/jama.2016.4226>
+
+Conway, K. S., & Rork, J. C. (2004). Diagnosis Murder: The death of state death taxes. Economic Inquiry, 42(4), 537–559.
+
+Imbens, G. W. (2014). Instrumental variables: An econometrician’s perspective. Statistical Science, 29(3), 323–358. <https://doi.org/10.1214/14-STS480>
+
+Jacobson, D. B., Raub, B. G., & Johnson, B. W. (2007). The Estate Tax: Ninety Years and Counting. Statistics of Income Bulletin, 27(1), 118–128. <https://www.irs.gov/pub/irs-soi/11pwcompench1aestate.pdf>
+
+Jakobsen, K., Kleven, H., Kolsrud, J., Landais, C., & Muñoz, M. (2026). Taxing top wealth: Migration responses and their aggregate economic implications. American Economic Review, 116(10), 3674–3720. <https://doi.org/10.1257/aer.20241596>
+
+Kleven, H., Landais, C., Muñoz, M., & Stantcheva, S. (2020). Taxation and migration: Evidence and policy implications. Journal of Economic Perspectives, 34(2), 119–142. <https://doi.org/10.1257/jep.34.2.119>
+
+Michael, J. (2009). State estate and inheritance taxes after the 2001 federal estate tax changes (House Research Short Subjects). Minnesota House of Representatives, House Research Department. <https://www.house.mn.gov/hrd/pubs/ss/ssfedetax.pdf>
+
+Moretti, E., & Wilson, D. J. (2017). The effect of state taxes on the geographical location of top earners: Evidence from star scientists. American Economic Review, 107(7), 1858–1903. <https://doi.org/10.1257/aer.20150508>
+
+Moretti, E., & Wilson, D. J. (2023a). Data and code for: “Taxing billionaires: Estate taxes and the geographical location of the ultra-wealthy” (Version V1) [Datensatz]. American Economic Association; Inter-university Consortium for Political and Social Research. <https://doi.org/10.3886/E157481V1>
+
+Moretti, E., & Wilson, D. J. (2023b). Taxing billionaires: Estate taxes and the geographical location of the ultra-wealthy. American Economic Journal: Economic Policy, 15(2), 424–466. <https://doi.org/10.1257/pol.20200685>
+
+Olden, A., & Møen, J. (2022). The triple difference estimator. The Econometrics Journal, 25(3), 531–553. <https://doi.org/10.1093/ectj/utac010>
+
+Raub, B., Johnson, B., & Newcomb, J. (2010). A comparison of wealth estimates for America’s wealthiest decedents using tax data and data from the Forbes 400. Proceedings. Annual Conference on Taxation and Minutes of the Annual Meeting of the National Tax Association, 103, 128–135.
+
+Roth, J., Sant’Anna, P. H. C., Bilinski, A., & Poe, J. (2023). What’s trending in difference-in-differences? A synthesis of the recent econometrics literature. Journal of Econometrics, 235(2), 2218–2244. <https://doi.org/10.1016/j.jeconom.2023.03.008>
+
+Wooldridge, J. M. (2010). Econometric analysis of cross section and panel data (2. Aufl.). MIT Press.
+
+Wooldridge, J. M. (2020). Introductory econometrics: A modern approach (7. Aufl.). Cengage Learning.
+
+Young, C., Varner, C., Lurie, I. Z., & Prisinzano, R. (2016). Millionaire migration and taxation of the elite: Evidence from administrative data. American Sociological Review, 81(3), 421–446. <https://doi.org/10.1177/0003122416639625>
+
+
+#### **R und R-Pakete**
+
+Arel-Bundock, V. (2022). modelsummary: Data and model summaries in R. Journal of Statistical Software, 103(1), 1–23. <https://doi.org/10.18637/jss.v103.i01>
+
+Bergé, L., Butts, K., & McDermott, G. (2026). Fast and user-friendly econometrics estimations: The R package fixest. arXiv. <https://doi.org/10.48550/arXiv.2601.21749>
+
+Iannone, R., & Roy, O. (2026). DiagrammeR: Graph/network visualization (Version 1.0.12). <https://rich-iannone.github.io/DiagrammeR/>
+
+Kranz, S. (2020). RTutor: Interactive R problem sets with automatic testing of solutions and automatic hints (Version 2020.11.25). <https://github.com/skranz/RTutor>
+
+Mullen, L., & Bratt, J. (2026). USAboundaries: Historical and contemporary boundaries of the United States of America (Version 0.5.1). <https://docs.ropensci.org/USAboundaries/>
+
+Pebesma, E. (2018). Simple features for R: Standardized support for spatial vector data. The R Journal, 10(1), 439–446. <https://doi.org/10.32614/RJ-2018-009>
+
+Pedersen, T. L. (2025). patchwork: The composer of plots (Version 1.3.2). <https://patchwork.data-imaginist.com>
+
+R Core Team. (2025). R: A language and environment for statistical computing. R Foundation for Statistical Computing. <https://www.R-project.org/>
+
+Wickham, H. (2016). ggplot2: Elegant graphics for data analysis (2. Aufl.). Springer. <https://ggplot2.tidyverse.org>
+
+Wickham, H., François, R., Henry, L., Müller, K., & Vaughan, D. (2026). dplyr: A grammar of data manipulation (Version 1.2.1). <https://dplyr.tidyverse.org>
+
+Wickham, H., Vaughan, D., & Girlich, M. (2026). tidyr: Tidy messy data (Version 1.3.2). <https://tidyr.tidyverse.org>
+
+
+#### **Websites**
+
+Forbes. (o. J.). Forbes 400. Abgerufen am 04.11.2026, von <https://www.forbes.com/forbes-400/>
+
+Tax Foundation. (o. J.). Estate and inheritance taxes by state. Abgerufen am 04.11.2026, von <https://taxfoundation.org/data/all/state/estate-inheritance-taxes/>
+
+U.S. Census Bureau. (o. J.). Annual Survey of State Government Tax Collections (STC). U.S. Department of Commerce. Abgerufen am 12.11.2026, von <https://www.census.gov/programs-surveys/stc.html>
+
+U.S. Congress. (2001, 7. Juni). H.R.1836 – Economic Growth and Tax Relief Reconciliation Act of 2001 (107th Congress, 2001–2002). Congress.gov. Abgerufen am 04.11.2026, von <https://www.congress.gov/bill/107th-congress/house-bill/1836/text>
+
+<br>
+
+<!-- ==================================================================================================================== -->
+
+## Exercise Anhang -- {.hidden}
+
+# Anhang
+
+Der Anhang ergänzt die bisherigen Analysen um weitere Ergebnisse, die für das Verständnis der Untersuchung hilfreich sind. Um den Hauptteil übersichtlich zu halten, betrachten wir diese zusätzlichen Auswertungen hier getrennt.
+
+**A1 -- Anteil der Altersgruppen in Bundesstaaten**
+
+Wir untersuchen, wie sich der Anteil jüngerer und älterer Forbes-400-Personen in Estate-Tax-Staaten vor und nach der Reform von 2001 unterscheidet.
+
+**A2 -- Triple-Difference-Schätzungen**
+
+Wir erweitern die Difference-in-Differences-Analyse um eine dritte Differenz, das Alter, um zu untersuchen, ob ältere Milliardäre stärker auf Erbschaftsteuern reagieren als jüngere.
+
+<!-- ==================================================================================================================== -->
+
+## Exercise A1 -- Anteil der Altersgruppen in Bundesstaaten
+
+Als ergänzende Analyse betrachten wir, ob sich der Anteil der Forbes-400-Personen in Estate-Tax-Staaten zwischen verschiedenen Altersgruppen unterscheidet. Dazu berechnen wir für jede Altersgruppe den Anteil der Forbes-400-Personen, die in einem Bundesstaat mit Estate Tax leben, und stellen diesen getrennt für die Zeit vor und nach der Reform von 2001 dar. Dadurch lässt sich untersuchen, ob sich der Zusammenhang zwischen Alter und Wohnort nach der Reform verändert hat.
+
+**Aufgabe**: Lade den Datensatz `Indiv_Analysis.rds` und speichere ihn als `IndivAnalysis`. Erstelle anschließend die Variable `Age_capped`, bei der alle Alterswerte ab 85 auf 85 gesetzt werden. Der Code ist bereits vorgegeben. Klicke auf `check`.
+
+```{r "8_1_0"}
+#< task
+IndivAnalysis <- readRDS("Indiv_Analysis.rds") %>%
+  mutate(
+    Age_capped = ifelse(Age_num >= 85, 85, Age_num)
+  )
+#>
+```
+
+Für die grafische Darstellung erstellen wir die Funktion `plot_fig_a1()`. Diese fasst die Daten für die jeweilige Periode nach Alter zusammen und berechnet den durchschnittlichen Anteil der Personen, die in einem Estate-Tax-Staat leben. Anschließend werden die Altersmittelwerte als Punkte dargestellt und durch eine lineare Trendlinie ergänzt. Dabei berücksichtigen wir Personen über 40 Jahren.
+
+**Aufgabe**: Führe den vorgegebenen Code aus, um die Funktion `plot_fig_a1()` zu erstellen.
+
+```{r "8_1_1"}
+#< task
+plot_fig_a1 <- function(data, post_value) {
+
+  # Daten für die jeweilige Periode vorbereiten
+  age_means <- data %>%
+    filter(
+      !is.na(EI),
+      !is.na(Age_capped),
+      Age_capped > 40,
+      post == post_value
+    ) %>%
+    group_by(Age_capped) %>%
+    summarise(
+      mean_EI = mean(EI),
+      n = n(),
+      .groups = "drop"
+    )
+
+  # Linearer Trend über die Altersmittelwerte
+  trend_model <- lm(mean_EI ~ Age_capped, data = age_means)
+  printCoefmat(coef(summary(trend_model)), signif.legend = FALSE)
+
+  # Grafik
+  fig <- ggplot(age_means, aes(x = Age_capped, y = mean_EI)) +
+    geom_point() +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE) +
+    scale_x_continuous(
+      breaks = c(40, 45, 50, 55, 60, 65, 70, 75, 80, 85),
+      labels = c("40", "45", "50", "55", "60", "65", "70", "75", "80", "85+"),
+      limits = c(40, 85)
+    ) +
+    scale_y_continuous(
+      breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5),
+      limits = c(0, 0.55)
+    ) +
+    labs(
+      x = "Alter",
+      y = "Anteil der Altersgruppe in Staaten mit Estate Tax"
+    ) +
+    theme_bw()
+
+  return(fig)
+}
+#>
+```
+
+Mit der erstellten Funktion können wir nun die beiden Zeiträume miteinander vergleichen. Dazu erzeugen wir jeweils eine Grafik für die Zeit vor und nach der Reform und stellen beide nebeneinander dar.
+
+**Aufgabe**: Erstelle mit `plot_fig_a1()` die beiden Grafiken für die Zeiträume `1982–2001` und `2003–2017`. Der Code ist bereits vorgegeben.
+
+```{r "8_1_2"}
+#< task
+a1a <- plot_fig_a1(IndivAnalysis, post_value = 0) +
+  labs(title = "1982–2001")
+a1b <- plot_fig_a1(IndivAnalysis, post_value = 1) +
+  labs(title = "2003–2017")
+
+(a1a | a1b)
+#>
+```
+
+Die Grafiken zeigen einen deutlichen Unterschied zwischen den beiden Zeiträumen. Vor der Reform ist der Zusammenhang zwischen Alter und dem Anteil der Personen in Estate-Tax-Staaten leicht positiv. Nach der Reform ändert sich dieser Zusammenhang: Mit zunehmendem Alter sinkt der Anteil der Forbes-400-Personen, die in einem Estate-Tax-Staat leben.
+
+Dies deutet darauf hin, dass insbesondere ältere Milliardäre nach der Reform seltener in Staaten mit Erbschaftsteuer wohnen. Die Beobachtung unterstützt damit unsere Vermutung, dass die Estate Tax für ältere Vermögende eine größere Rolle bei der Wohnortwahl spielt.
+
+<!-- ==================================================================================================================== -->
+
+## Exercise A2 -- Triple-Difference-Schätzungen
+
+Die bisherigen Difference-in-Differences-Schätzungen und der Instrumentalvariablen-Ansatz haben bereits einen negativen Effekt der Estate Tax auf die Anzahl der Forbes-400-Personen gezeigt. Bisher haben wir die Forbes 400 dabei insgesamt betrachtet. Nun wollen wir untersuchen, ob sich ältere und jüngere Milliardäre unterschiedlich verhalten.
+
+Dafür erweitern wir unsere Analyse um eine dritte Vergleichsdimension: das Alter. Da die Estate Tax erst beim Tod anfällt, dürfte sie für ältere Milliardäre eine größere Bedeutung bei der Wohnortwahl haben als für jüngere. Mit der Triple-Difference-Schätzung untersuchen wir deshalb, ob die Zahl älterer Forbes-400-Personen in Estate-Tax-Staaten nach der Reform von 2001 relativ stärker zurückgeht als die der jüngeren. Gleichzeitig hilft uns dieser zusätzliche Vergleich, unbeobachtete Veränderungen in den Bundesstaaten zu berücksichtigen, die beide Altersgruppen gleichermaßen betreffen. Die Triple-Difference-Methode lässt sich als Differenz zwischen zwei Difference-in-Differences-Schätzungen verstehen. Dadurch können gemeinsame Verzerrungen herausgerechnet werden. Für eine kausale Interpretation muss allerdings weiterhin eine geeignete Parallel-Trends-Assumption erfüllt sein (vgl. Olden & Møen, 2022).
+
+Die Idee dahinter ist einfach: Wenn Estate Taxes vor allem für ältere sehr vermögende Personen relevant sind, dann sollte der negative Effekt nach 2001 bei älteren Personen stärker ausfallen als bei jüngeren. Genau diesen zusätzlichen Unterschied misst der Triple-Difference-Term `EIxPostxold`. Ein negativer Koeffizient auf `EIxPostxold` lässt sich daher überzeugender als kausaler Effekt der Estate Tax interpretieren, denn er kann kaum noch durch allgemeine, altersunabhängige Standortvorteile der Non-Estate-Tax-Staaten erklärt werden.
+
+Die zentrale Variable in dieser Tabelle ist deshalb die Interaktion aus drei Komponenten:
+
+-   Estate-Tax-Status `EI`
+-   Zeitraum nach der Reform `post`
+-   Altersgruppe `old`
+
+**Aufgabe**: Lade den Datensatz `State_Year_Old.rds` und speichere ihn als `stateyearold`. Jede Beobachtung enthält Informationen zu einem Bundesstaat, einem Jahr und einer Altersgruppe. Entferne anschließend mit `filter()` das Übergangsjahr 2002.
+
+```{r "8_2_0"}
+#< task
+stateyearold <- readRDS("State_Year_Old.rds") %>%
+  filter(year != 2002)
+#>
+```
+
+Für den späteren Instrumentalvariablen-Ansatz benötigen wir außerdem den Estate-Tax-Status der Bundesstaaten im Jahr 2001. Dazu identifizieren wir zunächst alle Staaten, die in diesem Jahr eine Estate Tax hatten, und erstellen daraus die entsprechenden Instrumentalvariablen.
+
+**Aufgabe**: Erstelle die Variablen `EI2001`, `EI2001xPost`, `EI2001xPostxold` und `EI2001xold` mit dem vorgegebenen Code.
+
+```{r "8_2_1"}
+#< task
+# IV-Instrumente erstellen
+ei2001_states <- stateyearold %>%
+  filter(year == 2001, EI == 1) %>%
+  distinct(abbr) %>%
+  pull(abbr)
+
+stateyearold <- stateyearold %>%
+  mutate(
+    EI2001 = ifelse(abbr %in% ei2001_states & year >= 2001, 1, 0),
+    EI2001xPost = EI2001 * post,
+    EI2001xPostxold = EI2001xPost * old,
+    EI2001xold = EI2001 * old
+  )
+#>
+```
+
+### Basismodell
+
+Zunächst schätzen wir das Basismodell der Triple-Difference-Analyse. Die abhängige Variable ist `stock`, also die Anzahl der Forbes-400-Personen je Bundesstaat, Jahr und Altersgruppe. Neben dem zentralen Triple-Difference-Term `EIxPostxold` berücksichtigen wir die zugehörigen Interaktionsterme sowie Year-Fixed-Effects.
+
+**Aufgabe**: Schätze das Triple-Difference-Modell mit `feols()` und lasse dir die Ergebnisse anschließend mit `modelsummary()` anzeigen. Der Code ist bereits vorgegeben.
+
+```{r "8_2_2"}
+#< task
+m1 <- feols(
+  stock ~ EIxPostxold + EIxold + EIxPost + oldxPost + EI + old | year,
+  data = stateyearold,
+  panel.id = ~ stateold + year,
+  vcov = "DK"
+)
+
+modelsummary(
+  list("Basismodell" = m1),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+#>
+```
+
+Der wichtigste Koeffizient ist `EIxPostxold`. Er zeigt, wie sich der Effekt der Estate Tax nach 2001 zwischen älteren und jüngeren Forbes-400-Personen unterscheidet. Der negative Koeffizient deutet darauf hin, dass ältere Milliardäre nach der Reform stärker auf die Estate Tax reagieren als jüngere. Dies unterstützt unsere Vermutung, dass Erbschaftsteuern mit zunehmendem Alter eine größere Rolle bei der Wohnortwahl spielen.
+
+### Robustheitstest
+
+Nachdem das Basismodell einen negativen Triple-Difference-Effekt gezeigt hat, wollen wir untersuchen, ob dieses Ergebnis auch unter Berücksichtigung weiterer Einflussfaktoren bestehen bleibt.
+
+#### Persönliche Einkommensteuer
+
+Ein möglicher Einflussfaktor ist die persönliche Einkommensteuer `PIT`. Da sich die Einkommensteuersätze zwischen den Bundesstaaten unterscheiden, könnten sie ebenfalls die Wohnortwahl vermögender Personen beeinflussen. Wir erweitern das Modell deshalb um die Einkommensteuer und ihre Interaktionen mit dem Zeitraum und der Altersgruppe.
+
+**Aufgabe**: Erstelle zunächst die benötigten Interaktionsvariablen für die persönliche Einkommensteuer mit mutate().
+
+```{r "8_2_3"}
+#< task
+stateyearold <- stateyearold %>%
+  mutate(
+    PIT = PIT * 100,
+    PITxPost = PIT * post,
+    PITxold = PIT * old,
+    PITxPostxold = PIT * post * old
+  )
+#>
+```
+
+Anschließend schätzen wir das erweiterte Modell. Zusätzlich berücksichtigen wir Bundesstaat-Fixed-Effects, um zeitlich konstante Unterschiede zwischen den Staaten herauszurechnen.
+
+**Aufgabe**: Schätze das erweiterte Modell und stelle die Ergebnisse gemeinsam mit dem Basismodell in einer Tabelle dar.
+
+```{r "8_2_4"}
+#< task
+m2 <- feols(
+  stock ~ EIxPostxold + EIxold + EIxPost +
+    PITxPostxold + PITxold + PITxPost +
+    oldxPost + EI + PIT + old | statenum + year,
+  data = stateyearold,
+  panel.id = ~ stateold + year,
+  vcov = "DK"
+)
+
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Einkommensteuer" = m2
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+#>
+```
+
+Der Triple-Difference-Koeffizient bleibt auch unter Berücksichtigung der persönlichen Einkommensteuer negativ. Dies deutet darauf hin, dass der beobachtete Effekt nicht allein durch Unterschiede in der Einkommensteuer erklärt werden kann.
+
+#### Geografische Verteilung hoher Einkommen
+
+Eine weitere mögliche Erklärung sind Unterschiede in der Einkommensstruktur der Bundesstaaten. Staaten mit einem hohen Anteil einkommensstarker Personen könnten auch für Milliardäre besonders attraktiv sein. Deshalb berücksichtigen wir zusätzlich den Anteil eines Bundesstaates an der nationalen Bevölkerung im 90. bis 97. Einkommensperzentil, getrennt nach Jahr und Altersgruppe.
+
+**Aufgabe**: Berechne zunächst für jedes Jahr und jede Altersgruppe die nationale Gesamtzahl dieser einkommensstarken Personen. Erstelle anschließend mit `topshr_90to97` den prozentualen Anteil des jeweiligen Bundesstaates.
+
+```{r "8_2_5"}
+#< task
+# Anteil einkommensstarker Personen
+stateyearold <- stateyearold %>%
+  group_by(year, old) %>%
+  mutate(
+    pop_90to97_natl = sum(pop_90to97, na.rm = TRUE),
+    topshr_90to97 = (pop_90to97 / pop_90to97_natl) * 100
+  ) %>%
+  ungroup()
+#>
+```
+
+Mit dieser zusätzlichen Kontrollvariable können wir prüfen, ob der geschätzte Estate-Tax-Effekt auch unter Berücksichtigung der Einkommensstruktur bestehen bleibt.
+
+**Aufgabe**: Schätze das Modell mit der zusätzlichen Kontrollvariable `topshr_90to97` und stelle es gemeinsam mit den bisherigen Modellen dar.
+
+```{r "8_2_6"}
+#< task
+m3 <- feols(
+  stock ~ EIxPostxold + EIxold + EIxPost + oldxPost + EI + old + topshr_90to97 | statenum + year,
+  data = stateyearold,
+  panel.id = ~ stateold + year,
+  vcov = "DK"
+)
+
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Einkommensteuer" = m2,
+    "Hohe Einkommen" = m3
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+#>
+```
+
+Auch in dieser Spezifikation bleibt der Triple-Difference-Koeffizient negativ. Der Zusammenhang lässt sich somit nicht allein durch Unterschiede in der geografischen Verteilung einkommensstarker Personen erklären.
+
+### Instrumentalvariablen-Ansatz
+
+Abschließend erweitern wir die Triple-Difference-Analyse um einen Instrumentalvariablen-Ansatz. Wie bereits in Kapitel 3 erläutert, könnte der aktuelle Estate-Tax-Status eines Bundesstaates endogen sein, wenn Steuerreformen selbst durch die Zu- oder Abwanderung vermögender Personen beeinflusst werden.
+
+Um dieses Problem zu berücksichtigen, verwenden wir erneut den Estate-Tax-Status aus dem Jahr 2001. Dabei instrumentieren wir sowohl den aktuellen Estate-Tax-Status als auch seine Interaktionsterme. Die dafür benötigten Variablen haben wir bereits zu Beginn dieses Abschnitts erstellt.
+
+**Aufgabe**: Schätze das Triple-Difference-Modell mit dem Instrumentalvariablen-Ansatz und stelle die Ergebnisse gemeinsam mit den drei bisherigen Modellen in einer Tabelle dar.
+
+```{r "8_2_7"}
+#< task
+m4 <- feols(
+  stock ~ oldxPost + old | statenum + year |
+    EI + EIxold + EIxPost + EIxPostxold ~
+    EI2001 + EI2001xold + EI2001xPost + EI2001xPostxold,
+  data = stateyearold,
+  panel.id = ~ stateold + year,
+  vcov = "DK"
+)
+
+modelsummary(
+  list(
+    "Basismodell" = m1,
+    "Einkommensteuer" = m2,
+    "Hohe Einkommen" = m3,
+    "Instrumentalvariable" = m4
+  ),
+  coef_rename = c(
+    "fit_EIxPostxold" = "EIxPostxold",
+    "fit_EIxold" = "EIxold",
+    "fit_EIxPost" = "EIxPost",
+    "fit_EI" = "EI"
+  ),
+  stars = c("*" = .1, "**" = .05, "***" = .01),
+  gof_omit = "Adj|AIC|BIC|RMSE"
+)
+#>
+```
+
+Der zentrale Triple-Difference-Koeffizient `EIxPostxold` bleibt auch im Instrumentalvariablen-Modell negativ. Dies bestätigt die Robustheit unserer bisherigen Ergebnisse und spricht dagegen, dass der beobachtete Zusammenhang hauptsächlich durch spätere endogene Änderungen der Steuerpolitik erklärt wird.
+
+Der Vergleich aller vier Modelle zeigt, dass der Triple-Difference-Koeffizient durchgehend negativ bleibt. Die Ergebnisse liefern damit zusätzliche Hinweise darauf, dass ältere Milliardäre stärker auf bundesstaatliche Erbschaftsteuern reagieren als jüngere. Die Triple-Difference-Analyse ergänzt somit unsere bisherigen Difference-in-Differences-Schätzungen und stärkt die Evidenz für einen Einfluss der Estate Tax auf die Wohnortwahl der Superreichen.
+
+<!-- ==================================================================================================================== -->

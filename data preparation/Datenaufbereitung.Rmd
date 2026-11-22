@@ -1,0 +1,169 @@
+# Datensätze aufbereiten
+
+Für das RTutor-Problem-Set bereiten wir die Replikationsdaten von Moretti und Wilson (2023) auf. Dazu wählen wir die benötigten Variablen aus und speichern die angepassten Datensätze im RDS-Format.
+
+Die Originalquellen sind hier verfügbar:
+
+- **Paper:** <https://doi.org/10.1257/pol.20200685>
+- **Anhang:** <https://www.aeaweb.org/articles/materials/18522>
+- **Replikationsdaten:** <https://doi.org/10.3886/E157481V1>
+
+## 1. Originaldaten laden
+
+Zunächst laden wir die fünf benötigten Stata-Datensätze. Die Pfade beziehen sich auf den Ordner, in dem diese Rmd-Datei liegt.
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(haven)
+library(dplyr)
+```
+
+```{r "originaldaten"}
+
+# Arbeitsverzeichnis an den eigenen Speicherort anpassen
+
+setwd("~/RTutorErbschaftsteuerUSA/data preparation")
+
+IndivAnalysisDataset <- read_dta("~/IndivAnalysisDataset.dta")
+
+StateyearAnalysisDataset <- read_dta("~/StateyearAnalysisDataset.dta")
+
+StateyearAgeAnalysisDataset <- read_dta("~/StateyearAgeAnalysisDataset.dta")
+
+StateyearoldAnalysisDataset <- read_dta("~/StateyearoldAnalysisDataset.dta")
+
+EI_Tax_Merged_v2 <- read_dta("~/EI_Tax_Merged_v2.dta")
+
+```
+
+## 2. Datensätze aufbereiten
+
+Wir behalten nur die für das Problem Set benötigten Variablen, entfernen Stata-Labels und speichern die Ergebnisse als `.rds`-Dateien. Diese lassen sich anschließend mit `readRDS()` ohne zusätzliches Paket einlesen.
+
+### 2.1 State Year
+
+```{r "State Year"}
+
+State_Year <- StateyearAnalysisDataset %>%
+  select(abbr, year, EI, stock, statenum, PIT = avg, pop_90to97, wealth)%>%
+  haven::zap_labels()
+
+saveRDS(State_Year, "State_Year.rds")
+
+```
+
+### 2.2 Estate Tax
+
+```{r "EI Tax Merged"}
+
+Estate_Tax <- EI_Tax_Merged_v2 %>%
+  select(abbr, Year, EI_Tax) %>%
+  haven::zap_labels() %>%
+  filter(abbr != "", !is.na(EI_Tax)) %>%
+  distinct() %>%
+  arrange(abbr, Year)
+
+saveRDS(Estate_Tax, "Estate_Tax.rds")
+
+```
+
+### 2.3 Indiv Analysis
+
+```{r "Indiv Analysis"}
+
+Indiv_Analysis <- IndivAnalysisDataset %>%
+  select(nameid, year, abbr, EI, Age_num, wealth, post)%>%
+  haven::zap_labels()
+
+saveRDS(Indiv_Analysis, "Indiv_Analysis.rds")
+ 
+```
+
+### 2.4 State Year Age
+
+Zusätzlich ergänzen wir die Variable `remaining_life_base` mit der verbleibenden Lebenserwartung für die jeweiligen Altersgruppen.
+
+```{r "State Year Age"}
+
+State_Year_Age <- StateyearAgeAnalysisDataset %>%
+  select(State, abbr, year, EI, Age_num, stock, wealth, PIT = avg)%>%
+  haven::zap_labels()
+
+State_Year_Age <- State_Year_Age %>%
+  mutate(
+    remaining_life_base = case_when(
+      Age_num == 0 ~ 82.04,
+      Age_num == 1 ~ 81.6 + 10,
+      Age_num >= 5  & Age_num <= 9   ~ 75.8 + 10,
+      Age_num >= 10 & Age_num <= 14  ~ 70.8 + 10,
+      Age_num >= 15 & Age_num <= 19  ~ 66.0 + 10,
+      Age_num >= 20 & Age_num <= 24  ~ 61.1 + 10,
+      Age_num >= 25 & Age_num <= 29  ~ 56.2 + 10,
+      Age_num >= 30 & Age_num <= 34  ~ 64.3,
+      Age_num >= 35 & Age_num <= 39  ~ 59.4,
+      Age_num >= 40 & Age_num <= 44  ~ 54.4,
+      Age_num >= 45 & Age_num <= 49  ~ 49.5,
+      Age_num >= 50 & Age_num <= 54  ~ 44.6,
+      Age_num >= 55 & Age_num <= 59  ~ 39.7,
+      Age_num >= 60 & Age_num <= 64  ~ 34.9,
+      Age_num >= 65 & Age_num <= 69  ~ 30.2,
+      Age_num == 70 ~ 27.4,
+      Age_num == 71 ~ 26.5,
+      Age_num == 72 ~ 25.6,
+      Age_num == 73 ~ 24.7,
+      Age_num == 74 ~ 23.8,
+      Age_num == 75 ~ 22.9,
+      Age_num == 76 ~ 22.0,
+      Age_num == 77 ~ 21.2,
+      Age_num == 78 ~ 20.3,
+      Age_num == 79 ~ 19.5,
+      Age_num == 80 ~ 18.7,
+      Age_num == 81 ~ 17.9,
+      Age_num == 82 ~ 17.1,
+      Age_num == 83 ~ 16.3,
+      Age_num == 84 ~ 15.5,
+      Age_num == 85 ~ 14.8,
+      Age_num == 86 ~ 14.1,
+      Age_num == 87 ~ 13.4,
+      Age_num == 88 ~ 12.7,
+      Age_num == 89 ~ 12.0,
+      Age_num == 90 ~ 11.4,
+      Age_num == 91 ~ 10.8,
+      Age_num == 92 ~ 10.2,
+      Age_num == 93 ~ 9.6,
+      Age_num == 94 ~ 9.1,
+      Age_num == 95 ~ 8.6,
+      Age_num == 96 ~ 8.1,
+      Age_num == 97 ~ 7.6,
+      Age_num == 98 ~ 7.1,
+      Age_num == 99 ~ 6.7,
+      Age_num == 100 ~ 6.3,
+      Age_num == 101 ~ 5.9,
+      Age_num == 102 ~ 5.5,
+      Age_num == 103 ~ 5.2,
+      Age_num == 104 ~ 4.9,
+      Age_num > 105 ~ 3.5,
+      TRUE ~ NA_real_
+    )
+  )
+
+saveRDS(State_Year_Age, "State_Year_Age.rds")
+
+```
+
+### 2.5 State Year Old
+
+```{r "State Year Old"}
+
+State_Year_Old <- StateyearoldAnalysisDataset %>%
+  select(
+    abbr, year, EI, post, old, stock, statenum, stateold,
+    EIxPost, EIxold, oldxPost, EIxPostxold, PIT = avg, pop_90to97
+  )%>%
+  haven::zap_labels()
+
+saveRDS(State_Year_Old, "State_Year_Old.rds")
+  
+```

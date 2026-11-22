@@ -1,0 +1,11 @@
+Package: RTutorErbschaftsteuerUSA
+Type: Package
+Title: RTutor problem set ErbschaftsteuerUSA
+Version: 0.1
+Date: 2026-22-11
+Author: Tassilo Geiselhart
+Maintainer: Tassilo Geiselhart <tassilo.geiselhart@icloud.com>
+Description: Interaktives RTutor-Problem-Set zur Analyse des Einflusses von Erbschaftsteuern auf die Wohnortwahl der Forbes 400 in den USA, basierend auf Moretti und Wilson (2023).
+License: Problem set content: Creative Commons (CC BY-SA)
+	 Package code: GPL >= 2.0
+Depends: RTutor, ggplot2, dplyr, tidyr, USAboundaries, sf, fixest, modelsummary, patchwork, DiagrammeR
